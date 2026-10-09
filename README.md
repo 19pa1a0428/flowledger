@@ -11,17 +11,20 @@ correctness, operational visibility, and clear engineering tradeoffs.
 - Immutable workflow snapshots and UTC event history.
 - Explicit state transitions and bounded retry attempts.
 - Tests covering every status pair and retry exhaustion.
+- FastAPI create/read/transition endpoints and API contract tests.
 - A GitHub Actions test matrix for Python 3.11–3.13.
 
-This is an early domain prototype. HTTP endpoints, persistence, authentication,
-workers, notifications, and the UI are not implemented yet. In-memory history is
+This is a local API prototype. Persistence, authentication, workers, notifications,
+and the UI are not implemented yet. Storage is temporary, lost on restart, and
+separate in each server process. Use one process and synthetic data only. In-memory history is
 not a durable audit log, and immutable objects do not provide concurrency control.
 
 ## Run the tests
 
-Requires Python 3.11 or newer. No third-party runtime dependencies yet.
+Requires Python 3.11 or newer. Install the API and test dependencies:
 
 ```bash
+python -m pip install -e ".[test]"
 python -m unittest discover -s tests -v
 ```
 
@@ -47,3 +50,25 @@ There is no scheduled empty-commit script.
 FastAPI, PostgreSQL, SQLAlchemy/Alembic, a background worker with Redis,
 React/TypeScript, Docker, GitHub Actions, and OpenTelemetry.
 Start as a modular application with a worker; split services only for a demonstrated need.
+
+
+## Try the API
+
+```bash
+uvicorn flowledger.api:app --reload --host 127.0.0.1
+```
+
+Open http://127.0.0.1:8000/docs for interactive examples.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| POST | `/workflows` | Create with `name` and optional `max_attempts`; 201 plus Location |
+| GET | `/workflows/{id}` | Read snapshot and event history |
+| POST | `/workflows/{id}/transitions` | Transition with `status`; return updated snapshot |
+
+Names are trimmed, nonblank, and at most 200 characters. Attempts must be an
+integer from 1 to 100; booleans and numeric strings are rejected. Unknown fields
+are rejected. Malformed input returns 422, missing IDs 404, and lifecycle or
+retry conflicts 409. Rejected transitions leave the stored snapshot unchanged.
+A process-local lock serializes transitions only within one application instance;
+it provides no cross-process coordination. Endpoints do not execute jobs.

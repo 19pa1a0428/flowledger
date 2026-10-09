@@ -4,9 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flowledger"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reliable workflow execution and audit history"
 requires-python = ">=3.11"
+dependencies = ["fastapi==0.143.0", "pydantic==2.14.0", "uvicorn==0.54.0"]
+
+[project.optional-dependencies]
+test = ["httpx==0.28.1"]
 
 [tool.setuptools.packages.find]
 include = ["flowledger*"]
+
