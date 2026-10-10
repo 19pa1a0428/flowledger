@@ -18,7 +18,8 @@ will produce a finished feature. Work progresses only when the preceding increme
 2. DONE: FastAPI endpoints backed by an explicitly temporary in-memory repository;
    validate inputs and map invalid transitions to useful HTTP errors.
 3. DONE: API contract tests for creation, missing IDs, invalid transitions, and retry exhaustion.
-4. PostgreSQL schema and migration with workflow/event tables.
+4. DONE: PostgreSQL schema and reversible Alembic migration with workflow/event tables,
+   ordered history, foreign keys, uniqueness, and invariant checks.
 5. Replace temporary storage; test restart persistence and transaction rollback.
 6. Add version checking and reproduce a concurrent transition conflict.
 7. Document why the concurrency fix works and demonstrate it.
@@ -33,12 +34,8 @@ author identity to disguise assistance, or modify unrelated repositories.
 After each increment, include an explanation, a small hands-on exercise, and
 an interview question. Failure to run a check must be reported explicitly.
 Do not merge code with known failing required checks.
-Do not provision paid resources or add live messaging integrations automatically.
 
 ## Scope boundaries
 
 No employer code, customer information, real recipient lists, or credentials.
 No AI add-on until the deterministic workflow platform works and can be measured.
-An optional later feature could summarize failures using synthetic records;
-evaluate correctness and privacy before using an external model service.
-
