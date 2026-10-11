@@ -3,11 +3,20 @@ from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from flowledger.api import create_app
+from flowledger.database import Base
+from flowledger.repository import SqlAlchemyRepository, build_session_factory
+from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 
 
 class ApiTests(unittest.TestCase):
     def setUp(self):
-        self.client = TestClient(create_app())
+        engine = create_engine(
+            "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        )
+        Base.metadata.create_all(engine)
+        self.repository = SqlAlchemyRepository(build_session_factory(engine))
+        self.client = TestClient(create_app(self.repository))
         self.addCleanup(self.client.close)
 
     def create(self, **kwargs):
@@ -71,7 +80,7 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(self.client.post(path + '/transitions', json={'status': status}).status_code, 200)
         self.assertEqual(self.client.post(path + '/transitions', json={'status': 'running'}).status_code, 409)
 
-    def test_application_instances_have_separate_temporary_storage(self):
+    def test_application_instances_share_durable_storage(self):
         path = self.create().headers['Location']
-        with TestClient(create_app()) as other:
-            self.assertEqual(other.get(path).status_code, 404)
+        with TestClient(create_app(self.repository)) as other:
+            self.assertEqual(other.get(path).status_code, 200)

@@ -20,7 +20,8 @@ will produce a finished feature. Work progresses only when the preceding increme
 3. DONE: API contract tests for creation, missing IDs, invalid transitions, and retry exhaustion.
 4. DONE: PostgreSQL schema and reversible Alembic migration with workflow/event tables,
    ordered history, foreign keys, uniqueness, and invariant checks.
-5. Replace temporary storage; test restart persistence and transaction rollback.
+5. DONE: Replace temporary storage with a transactional SQLAlchemy repository;
+   test restart persistence and rollback of snapshot/event writes.
 6. Add version checking and reproduce a concurrent transition conflict.
 7. Document why the concurrency fix works and demonstrate it.
 

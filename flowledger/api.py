@@ -1,12 +1,14 @@
 """HTTP boundary for the workflow domain. Synthetic local demo only."""
 from datetime import datetime
+import os
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import create_engine
 
 from flowledger.domain import InvalidTransition, Status, Workflow
-from flowledger.repository import InMemoryRepository
+from flowledger.repository import SqlAlchemyRepository, build_session_factory
 
 
 class CreateWorkflow(BaseModel):
@@ -45,9 +47,14 @@ class WorkflowResponse(BaseModel):
     events: list[EventResponse]
 
 
-def create_app() -> FastAPI:
-    app = FastAPI(title="FlowLedger", version="0.2.0")
-    repository = InMemoryRepository()
+def create_app(repository: SqlAlchemyRepository | None = None) -> FastAPI:
+    app = FastAPI(title="FlowLedger", version="0.3.0")
+    if repository is None:
+        database_url = os.getenv(
+            "FLOWLEDGER_DATABASE_URL",
+            "postgresql+psycopg://flowledger:flowledger@localhost/flowledger",
+        )
+        repository = SqlAlchemyRepository(build_session_factory(create_engine(database_url)))
 
     @app.post("/workflows", status_code=201, response_model=WorkflowResponse)
     def create_workflow(body: CreateWorkflow, response: Response):

@@ -12,12 +12,13 @@ correctness, operational visibility, and clear engineering tradeoffs.
 - Explicit state transitions and bounded retry attempts.
 - FastAPI create/read/transition endpoints with contract tests.
 - SQLAlchemy workflow/event models and a reversible Alembic migration.
+- Transactional SQLAlchemy repository wired into the API.
 - PostgreSQL-native UUID columns, ordered event history, foreign keys, and database checks.
 - A GitHub Actions test matrix for Python 3.11–3.13.
 
-The API still uses temporary in-memory storage. It loses data on restart and each
-server process has separate state. The relational schema is now defined, but wiring
-the API to transactional database sessions is the next increment.
+Workflow snapshots and their appended events now commit atomically and survive process
+restarts. Concurrent writers can still overwrite a snapshot read at the same version;
+explicit version checking is the next increment.
 
 ## Run the tests
 
@@ -36,10 +37,12 @@ PostgreSQL DDL can be reviewed without connecting to a server:
 python -m alembic upgrade head --sql
 ```
 
-For a local PostgreSQL instance, override the development URL in `alembic.ini`:
+For a local PostgreSQL instance, create the schema and point the API at the same URL:
 
 ```bash
-python -m alembic -x unused=unused upgrade head
+python -m alembic upgrade head
+export FLOWLEDGER_DATABASE_URL=postgresql+psycopg://flowledger:flowledger@localhost/flowledger
+uvicorn flowledger.api:app --reload --host 127.0.0.1
 ```
 
 Do not use the checked-in example credentials outside local development. A later
@@ -61,6 +64,7 @@ See [the roadmap](docs/ROADMAP.md) and [the learning journal](docs/LEARNING.md).
 ## Try the API
 
 ```bash
+python -m alembic upgrade head
 uvicorn flowledger.api:app --reload --host 127.0.0.1
 ```
 

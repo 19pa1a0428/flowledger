@@ -47,3 +47,41 @@ strategy, which is the next increment.
 
 Next: replace temporary API storage with transactional persistence and test restart
 persistence plus rollback behavior.
+
+## 2026-10-10 — Transactional repository and restart durability
+
+Assistance: AI-assisted implementation, persistence tests, and documentation.
+
+Replaced the process-local dictionary with a SQLAlchemy repository. Creating a workflow
+stores its snapshot and initial event together. Each transition loads ordered history,
+applies the existing domain rules, then updates the snapshot and appends exactly one event
+inside the same session transaction. The API accepts an injected repository for tests and
+otherwise reads `FLOWLEDGER_DATABASE_URL`, defaulting to the local PostgreSQL URL used by
+Alembic.
+
+Two persistence tests provide the new acceptance evidence. One closes the original engine,
+opens a new engine and repository against the same file, and verifies the workflow and
+ordered events survived. The other raises a synthetic error during commit and verifies a
+new session still sees the original snapshot and only the original event. API contract
+tests now run through SQLAlchemy rather than a separate in-memory implementation.
+
+Tradeoff: this increment deliberately does not claim safe concurrent writes. Two sessions
+can still load the same state before either commits. A version column and compare-on-update
+behavior belong in the next increment, where a repeatable conflict test can prove the fix.
+
+Validation: Python 3.12 passed all 16 tests locally (5 domain, 7 API, 2 repository,
+2 migration). SQLite provides fast transaction and restart tests; a live PostgreSQL server
+was not provisioned, so no live PostgreSQL result is claimed.
+
+Exercise: create a workflow through the API, stop the server, start it again with the same
+`FLOWLEDGER_DATABASE_URL`, and retrieve the workflow by ID. Then inspect both database rows
+to confirm the snapshot and position-zero event agree.
+
+Interview question: Why write the current snapshot and audit event in one transaction?
+
+Answer outline: they represent one state change. If only one write commits, reads either
+show a state with no explanation or a history event that disagrees with current state.
+A single transaction makes both visible together or rolls both back. This guarantees
+atomicity, but does not yet prevent two concurrent transactions from overwriting each other.
+
+Next: add explicit version checking and a deterministic concurrent-transition conflict test.
