@@ -12,6 +12,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(pending.status, Status.PENDING)
         self.assertEqual(done.name, "synthetic report")
         self.assertEqual(done.attempts, 1)
+        self.assertEqual((pending.version, running.version, done.version), (0, 1, 2))
         self.assertEqual([e.status for e in done.events],
                          [Status.PENDING, Status.RUNNING, Status.SUCCEEDED])
         self.assertTrue(all(e.occurred_at.utcoffset().total_seconds() == 0

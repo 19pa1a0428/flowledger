@@ -17,6 +17,7 @@ class WorkflowRecord(Base):
         CheckConstraint("attempts >= 0", name="ck_workflows_attempts_nonnegative"),
         CheckConstraint("max_attempts BETWEEN 1 AND 100", name="ck_workflows_max_attempts_range"),
         CheckConstraint("attempts <= max_attempts", name="ck_workflows_attempts_within_limit"),
+        CheckConstraint("version >= 0", name="ck_workflows_version_nonnegative"),
         CheckConstraint(
             "status IN ('pending', 'running', 'succeeded', 'failed', 'cancelled')",
             name="ck_workflows_status",
@@ -28,6 +29,7 @@ class WorkflowRecord(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     events: Mapped[list["EventRecord"]] = relationship(

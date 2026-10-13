@@ -13,12 +13,14 @@ correctness, operational visibility, and clear engineering tradeoffs.
 - FastAPI create/read/transition endpoints with contract tests.
 - SQLAlchemy workflow/event models and a reversible Alembic migration.
 - Transactional SQLAlchemy repository wired into the API.
+- Optimistic concurrency control for stale transition requests.
 - PostgreSQL-native UUID columns, ordered event history, foreign keys, and database checks.
 - A GitHub Actions test matrix for Python 3.11–3.13.
 
-Workflow snapshots and their appended events now commit atomically and survive process
-restarts. Concurrent writers can still overwrite a snapshot read at the same version;
-explicit version checking is the next increment.
+Workflow snapshots and their appended events commit atomically and survive process
+restarts. Each transition supplies the version it read. A conditional database update
+advances that version, so a stale writer receives `409 Conflict` without overwriting the
+newer snapshot or appending a misleading event.
 
 ## Run the tests
 
@@ -70,6 +72,10 @@ uvicorn flowledger.api:app --reload --host 127.0.0.1
 
 Open http://127.0.0.1:8000/docs. The current routes are `POST /workflows`,
 `GET /workflows/{id}`, and `POST /workflows/{id}/transitions`.
+The transition body is shaped like
+`{"status": "running", "expected_version": 0}`. After a successful transition, use
+the returned `version` for the next request; on `409`, fetch the latest workflow before
+deciding whether to retry.
 
 ## Planned stack
 

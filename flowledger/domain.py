@@ -31,6 +31,7 @@ class Workflow:
     status: Status
     attempts: int
     max_attempts: int
+    version: int
     events: tuple[Event, ...]
 
     @classmethod
@@ -40,7 +41,7 @@ class Workflow:
         if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or max_attempts < 1:
             raise ValueError("max_attempts must be a positive integer")
         event = Event(Status.PENDING, datetime.now(timezone.utc), 0)
-        return cls(uuid4(), name.strip(), Status.PENDING, 0, max_attempts, (event,))
+        return cls(uuid4(), name.strip(), Status.PENDING, 0, max_attempts, 0, (event,))
 
     def transition(self, target: Status) -> "Workflow":
         allowed = {
@@ -56,4 +57,5 @@ class Workflow:
             raise InvalidTransition("Retry limit reached")
         attempts = self.attempts + (target == Status.RUNNING)
         event = Event(target, datetime.now(timezone.utc), attempts)
-        return replace(self, status=target, attempts=attempts, events=(*self.events, event))
+        return replace(self, status=target, attempts=attempts,
+                       version=self.version + 1, events=(*self.events, event))

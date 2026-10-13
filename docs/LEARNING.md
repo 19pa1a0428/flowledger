@@ -85,3 +85,40 @@ A single transaction makes both visible together or rolls both back. This guaran
 atomicity, but does not yet prevent two concurrent transactions from overwriting each other.
 
 Next: add explicit version checking and a deterministic concurrent-transition conflict test.
+
+## 2026-10-12 — Optimistic concurrency control
+
+Assistance: AI-assisted implementation, migration design, conflict tests, and documentation.
+
+Added a nonnegative `version` to workflow snapshots and API responses. A transition must
+send the version it previously read. The repository validates that precondition and then
+updates the snapshot with `WHERE id = ... AND version = ...`. Exactly one writer can advance
+a given version; a zero-row update becomes `ConcurrencyConflict`. The event is inserted only
+after that comparison succeeds and remains in the same transaction as the snapshot update.
+
+Repository and HTTP tests reproduce two writers acting on version zero. The first moves the
+workflow to running and version one. The stale writer receives a conflict, while the stored
+snapshot and two-event history remain unchanged. This proves both the user-facing contract
+and the persistence invariant rather than relying only on an ORM versioning feature.
+
+Tradeoff: clients now carry `expected_version`, adding one field and a conflict-recovery
+path. In return, conflicts are explicit instead of silently losing an update. Pessimistic
+row locks were not chosen because they hold database resources while work is in flight and
+still do not communicate a stale client decision as clearly.
+
+Validation: Python 3.12 passed all 18 tests locally (5 domain, 8 API, 3 repository,
+2 migration). The Alembic chain upgraded and downgraded a temporary SQLite database. A live
+PostgreSQL concurrency test was not run, so no live-engine result is claimed.
+
+Exercise: create a workflow, save its version zero response, and submit a running transition
+twice with `expected_version: 0`. Confirm the first response is version one, the second is
+`409`, and a fresh GET contains only the pending and running events.
+
+Interview question: How does a conditional update prevent lost updates without a row lock?
+
+Answer outline: every writer compares the version it read in the UPDATE predicate. The first
+matching transaction increments the version. Later stale updates match zero rows and roll
+back, including any event insert. This is optimistic concurrency: it assumes conflicts are
+uncommon but detects them atomically when they occur.
+
+Next: begin the reliability phase with a worker command envelope and idempotent submission.

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from flowledger.database import EventRecord, WorkflowRecord
@@ -11,6 +11,10 @@ from flowledger.domain import Event, Status, Workflow
 
 
 SessionFactory = Callable[[], Session]
+
+
+class ConcurrencyConflict(RuntimeError):
+    """The workflow changed after the caller read it."""
 
 
 def build_session_factory(engine: Engine) -> sessionmaker[Session]:
@@ -34,6 +38,7 @@ class SqlAlchemyRepository:
         record = WorkflowRecord(
             id=workflow.id, name=workflow.name, status=workflow.status.value,
             attempts=workflow.attempts, max_attempts=workflow.max_attempts,
+            version=workflow.version,
             created_at=workflow.events[0].occurred_at,
             updated_at=workflow.events[-1].occurred_at,
             events=[EventRecord(position=position, status=event.status.value,
@@ -51,18 +56,31 @@ class SqlAlchemyRepository:
                 raise KeyError(workflow_id)
             return self._to_domain(record)
 
-    def transition(self, workflow_id: UUID, target: Status) -> Workflow:
+    def transition(self, workflow_id: UUID, target: Status, expected_version: int) -> Workflow:
         with self._sessions.begin() as session:
             record = self._find(session, workflow_id)
             if record is None:
                 raise KeyError(workflow_id)
             current = self._to_domain(record)
+            if current.version != expected_version:
+                raise ConcurrencyConflict(
+                    f"Expected version {expected_version}, found {current.version}"
+                )
             updated = current.transition(target)
             event = updated.events[-1]
-            record.status = updated.status.value
-            record.attempts = updated.attempts
-            record.updated_at = event.occurred_at
-            record.events.append(EventRecord(
+            result = session.execute(
+                update(WorkflowRecord)
+                .where(WorkflowRecord.id == workflow_id,
+                       WorkflowRecord.version == expected_version)
+                .values(status=updated.status.value, attempts=updated.attempts,
+                        version=updated.version, updated_at=event.occurred_at)
+            )
+            if result.rowcount != 1:
+                raise ConcurrencyConflict(
+                    f"Workflow changed from version {expected_version}"
+                )
+            session.add(EventRecord(
+                workflow_id=workflow_id,
                 position=len(current.events), status=event.status.value,
                 occurred_at=event.occurred_at, attempt=event.attempt,
             ))
@@ -80,4 +98,5 @@ class SqlAlchemyRepository:
                        for event in record.events)
         return Workflow(id=record.id, name=record.name, status=Status(record.status),
                         attempts=record.attempts, max_attempts=record.max_attempts,
+                        version=record.version,
                         events=events)

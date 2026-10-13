@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from flowledger.database import Base
 from flowledger.domain import Status, Workflow
-from flowledger.repository import SqlAlchemyRepository, build_session_factory
+from flowledger.repository import ConcurrencyConflict, SqlAlchemyRepository, build_session_factory
 
 
 class RepositoryTests(unittest.TestCase):
@@ -21,7 +21,7 @@ class RepositoryTests(unittest.TestCase):
 
     def test_data_survives_new_repository_and_engine(self):
         workflow = self.repository.add(Workflow.create("durable synthetic job"))
-        self.repository.transition(workflow.id, Status.RUNNING)
+        self.repository.transition(workflow.id, Status.RUNNING, workflow.version)
         self.engine.dispose()
         restarted_engine = create_engine(str(self.engine.url))
         self.addCleanup(restarted_engine.dispose)
@@ -49,8 +49,26 @@ class RepositoryTests(unittest.TestCase):
         event.listen(FailingCommitSession, "before_commit", reject_commit, once=True)
         failing = SqlAlchemyRepository(failing_sessions)
         with self.assertRaisesRegex(RuntimeError, "synthetic commit failure"):
-            failing.transition(workflow.id, Status.RUNNING)
+            failing.transition(workflow.id, Status.RUNNING, workflow.version)
         restored = self.repository.get(workflow.id)
         self.assertEqual(restored.status, Status.PENDING)
         self.assertEqual(restored.attempts, 0)
         self.assertEqual(len(restored.events), 1)
+
+    def test_stale_writer_cannot_overwrite_snapshot_or_append_event(self):
+        workflow = self.repository.add(Workflow.create("concurrent synthetic job"))
+        writer_one = SqlAlchemyRepository(build_session_factory(self.engine))
+        writer_two = SqlAlchemyRepository(build_session_factory(self.engine))
+
+        updated = writer_one.transition(
+            workflow.id, Status.RUNNING, expected_version=workflow.version
+        )
+        with self.assertRaisesRegex(ConcurrencyConflict, "Expected version 0, found 1"):
+            writer_two.transition(
+                workflow.id, Status.CANCELLED, expected_version=workflow.version
+            )
+
+        restored = self.repository.get(workflow.id)
+        self.assertEqual(restored, updated)
+        self.assertEqual([event.status for event in restored.events],
+                         [Status.PENDING, Status.RUNNING])

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import create_engine
 
 from flowledger.domain import InvalidTransition, Status, Workflow
-from flowledger.repository import SqlAlchemyRepository, build_session_factory
+from flowledger.repository import ConcurrencyConflict, SqlAlchemyRepository, build_session_factory
 
 
 class CreateWorkflow(BaseModel):
@@ -28,6 +28,7 @@ class CreateWorkflow(BaseModel):
 class TransitionWorkflow(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: Status
+    expected_version: int = Field(ge=0, strict=True)
 
 
 class EventResponse(BaseModel):
@@ -44,11 +45,12 @@ class WorkflowResponse(BaseModel):
     status: Status
     attempts: int
     max_attempts: int
+    version: int
     events: list[EventResponse]
 
 
 def create_app(repository: SqlAlchemyRepository | None = None) -> FastAPI:
-    app = FastAPI(title="FlowLedger", version="0.3.0")
+    app = FastAPI(title="FlowLedger", version="0.4.0")
     if repository is None:
         database_url = os.getenv(
             "FLOWLEDGER_DATABASE_URL",
@@ -72,10 +74,12 @@ def create_app(repository: SqlAlchemyRepository | None = None) -> FastAPI:
     @app.post("/workflows/{workflow_id}/transitions", response_model=WorkflowResponse)
     def transition_workflow(workflow_id: UUID, body: TransitionWorkflow):
         try:
-            return repository.transition(workflow_id, body.status)
+            return repository.transition(workflow_id, body.status, body.expected_version)
         except KeyError:
             raise HTTPException(404, "Workflow not found") from None
         except InvalidTransition as error:
+            raise HTTPException(409, str(error)) from error
+        except ConcurrencyConflict as error:
             raise HTTPException(409, str(error)) from error
 
     return app

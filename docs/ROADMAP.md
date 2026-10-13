@@ -22,8 +22,9 @@ will produce a finished feature. Work progresses only when the preceding increme
    ordered history, foreign keys, uniqueness, and invariant checks.
 5. DONE: Replace temporary storage with a transactional SQLAlchemy repository;
    test restart persistence and rollback of snapshot/event writes.
-6. Add version checking and reproduce a concurrent transition conflict.
-7. Document why the concurrency fix works and demonstrate it.
+6. DONE: Add version checking and reproduce a concurrent transition conflict.
+7. DONE: Document why the concurrency fix works and demonstrate it.
+8. Define the worker command envelope and add idempotent job submission backed by Redis.
 
 ## Working cadence
 

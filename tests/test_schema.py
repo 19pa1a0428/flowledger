@@ -22,7 +22,8 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(set(inspector.get_table_names()), {"alembic_version", "workflows", "workflow_events"})
         self.assertEqual(
             {column["name"] for column in inspector.get_columns("workflows")},
-            {"id", "name", "status", "attempts", "max_attempts", "created_at", "updated_at"},
+            {"id", "name", "status", "attempts", "max_attempts", "version",
+             "created_at", "updated_at"},
         )
         foreign_keys = inspector.get_foreign_keys("workflow_events")
         self.assertEqual(foreign_keys[0]["referred_table"], "workflows")
@@ -32,6 +33,7 @@ class MigrationTests(unittest.TestCase):
         checks = {item["name"] for table in ("workflows", "workflow_events")
                   for item in inspector.get_check_constraints(table)}
         self.assertIn("ck_workflows_status", checks)
+        self.assertIn("ck_workflows_version_nonnegative", checks)
         self.assertIn("ck_workflow_events_status", checks)
 
     def test_migration_is_reversible(self):
