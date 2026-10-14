@@ -12,12 +12,14 @@ dependencies = [
   "fastapi==0.143.0",
   "psycopg[binary]==3.2.10",
   "pydantic==2.14.0",
+  "redis==5.2.1",
   "sqlalchemy==2.0.44",
   "uvicorn==0.54.0",
 ]
 
 [project.optional-dependencies]
-test = ["httpx==0.28.1"]
+test = ["httpx==0.28.1", "fakeredis[lua]==2.31.1"]
 
 [tool.setuptools.packages.find]
 include = ["flowledger*"]
+

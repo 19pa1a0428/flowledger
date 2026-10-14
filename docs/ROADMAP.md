@@ -24,7 +24,10 @@ will produce a finished feature. Work progresses only when the preceding increme
    test restart persistence and rollback of snapshot/event writes.
 6. DONE: Add version checking and reproduce a concurrent transition conflict.
 7. DONE: Document why the concurrency fix works and demonstrate it.
-8. Define the worker command envelope and add idempotent job submission backed by Redis.
+8. DONE: Define the worker command envelope and add idempotent job submission backed by Redis.
+9. Add live Redis integration checks and reliable worker claim/acknowledgement with recovery tests.
+10. Connect database intent to queue delivery through a transactional outbox.
+11. Add bounded retry backoff and demonstrate duplicate-safe execution.
 
 ## Working cadence
 
@@ -41,3 +44,4 @@ Do not merge code with known failing required checks.
 
 No employer code, customer information, real recipient lists, or credentials.
 No AI add-on until the deterministic workflow platform works and can be measured.
+

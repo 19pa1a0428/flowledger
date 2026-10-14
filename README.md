@@ -77,8 +77,41 @@ The transition body is shaped like
 the returned `version` for the next request; on `409`, fetch the latest workflow before
 deciding whether to retry.
 
-## Planned stack
+## Redis command submission
+
+`flowledger.jobs.WorkerCommand` carries a schema version, command UUID, workflow
+UUID, expected workflow version, and target status. `RedisSubmissionQueue.submit`
+returns True for new work, False for an identical replay, and raises
+`SubmissionConflict` when an ID is reused with different contents.
+
+```python
+from uuid import uuid4
+from redis import Redis
+from flowledger.jobs import RedisSubmissionQueue, WorkerCommand
+
+queue = RedisSubmissionQueue(Redis.from_url("redis://localhost:6379/0"))
+command = WorkerCommand(command_id=uuid4(), workflow_id=uuid4(), expected_version=0)
+assert queue.submit(command) is True
+assert queue.submit(command) is False
+```
+
+The workflow ID above is synthetic; submission does not check database existence.
+A Lua script serializes receipt checking and list append. Both keys share a cluster
+hash tag. Receipts have no TTL: expiring them would allow late duplicate submissions,
+but indefinite retention grows memory. This is a submission library, not an API route
+or executing worker. No real notifications are sent.
+
+Use a dedicated local Redis with persistence and no eviction when experimenting.
+Deduplication lasts only while receipts survive: Redis loss, eviction, script resource
+errors, or manual deletion invalidate that guarantee. Lua does not roll back writes
+on an error; key types are checked before mutation, but memory/resource failures
+remain a limitation. This is not exactly-once execution or a database/Redis transaction.
+Reliable claim/ack, live-engine tests, and an outbox are next. Tests currently use
+fakeredis with Lua support, without requiring a live Redis server.
+
+## Remaining stack
 
 FastAPI, PostgreSQL, SQLAlchemy/Alembic, a Redis-backed worker, React/TypeScript,
 Docker, GitHub Actions, and OpenTelemetry. Start as a modular application with a
 worker; split services only for a demonstrated need.
+

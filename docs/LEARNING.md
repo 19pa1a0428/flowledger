@@ -122,3 +122,37 @@ back, including any event insert. This is optimistic concurrency: it assumes con
 uncommon but detects them atomically when they occur.
 
 Next: begin the reliability phase with a worker command envelope and idempotent submission.
+
+## 2026-10-13 — Command envelope and Redis submission
+
+Assistance: AI-assisted implementation, tests, and documentation.
+
+Added a frozen, versioned command schema and Redis submission library. One Lua script
+checks a retained receipt, rejects a changed payload for the same command ID, and enqueues
+new commands. Both keys use the same cluster hash tag. Invalid key types are detected
+before writes because Lua errors do not roll back preceding mutations.
+
+Validation: Python 3.12 passed all 25 tests locally. Seven new tests cover schema rejection,
+exact replay through a fresh client, payload conflicts, 24 concurrent submissions with
+one winner, distinct command ordering, invalid queue type, and connection failure.
+Redis checks used fakeredis 2.31.1 with Lua support, not a live server. Existing API,
+repository, domain, and migration tests also passed. A sandbox test-client run stalled;
+the complete suite passed in the unrestricted runtime after installing declared dependencies.
+
+Limits: no worker execution or HTTP submission route yet. Receipts grow indefinitely;
+deduplication depends on Redis retention. Memory errors can leave partial Lua writes,
+and PostgreSQL/Redis delivery is not atomic. No live Redis crash/durability result is claimed.
+
+Exercise: run the README's synthetic submission example against local Redis. Re-submit
+the command with the same ID and expected_version changed to 1; verify SubmissionConflict
+and that the pending list still contains one entry.
+
+Interview question: Why is SET NX followed by a separate queue append unsafe?
+
+Answer outline: a crash between the two operations leaves a receipt without queued work,
+so retries can be incorrectly suppressed. A Lua script prevents concurrent interleaving
+of these steps, but is not a rollback transaction or an exactly-once execution guarantee.
+Durability, resource failures, and database-to-queue delivery need separate designs.
+
+Next: live Redis integration and claim/acknowledgement recovery, followed by the outbox.
+
