@@ -106,12 +106,48 @@ Deduplication lasts only while receipts survive: Redis loss, eviction, script re
 errors, or manual deletion invalidate that guarantee. Lua does not roll back writes
 on an error; key types are checked before mutation, but memory/resource failures
 remain a limitation. This is not exactly-once execution or a database/Redis transaction.
-Reliable claim/ack, live-engine tests, and an outbox are next. Tests currently use
-fakeredis with Lua support, without requiring a live Redis server.
+Queue claims and recovery are available through `flowledger.claims.RedisClaimQueue`:
+
+```python
+from flowledger.claims import RedisClaimQueue
+
+worker_queue = RedisClaimQueue(Redis.from_url("redis://localhost:6379/0"))
+worker_queue.recover_expired(limit=100)  # Call periodically, including when idle.
+claim = worker_queue.claim(lease_ms=30_000)
+if claim is not None:
+    print(claim.command)  # Inspection only: no workflow effects executed here.
+    assert worker_queue.acknowledge(claim.token)
+```
+
+Claiming atomically moves one pending payload into a token-indexed hash and lease
+deadline set. Redis server time determines expiry. Recovery requeues expired claims
+in bounded batches; each new claim receives a new token. Acknowledgements for old,
+expired, or already acknowledged tokens return False. There is no lease renewal yet;
+work exceeding its lease can be delivered again. A real worker must acknowledge only
+after its durable effect commits, and must make that effect duplicate-safe. Claim
+tokens protect queue ownership, not database or external effects.
+
+These scripts retain the same Redis persistence/no-eviction/resource-error limitations
+as submission. This is at-least-once delivery, not exactly-once execution. Malformed
+payloads remain recoverable but can poison the queue; dead-letter handling is future
+work. Do not manipulate the queue keys outside these libraries.
+
+Unit tests use fakeredis with Lua support. CI additionally runs the claim contract
+against Redis 7.4. To run live checks locally, point the following variable at a
+dedicated disposable database with no existing FlowLedger keys (never production):
+
+```bash
+FLOWLEDGER_TEST_REDIS_URL=redis://localhost:6379/15 python -m unittest discover -s tests -v
+```
+
+Live tests delete only their four fixed FlowLedger queue keys after each test. They
+fail rather than clear pre-existing keys. Without the variable, live checks are
+explicitly skipped. Transactional outbox delivery and duplicate-safe execution are next.
 
 ## Remaining stack
 
 FastAPI, PostgreSQL, SQLAlchemy/Alembic, a Redis-backed worker, React/TypeScript,
 Docker, GitHub Actions, and OpenTelemetry. Start as a modular application with a
 worker; split services only for a demonstrated need.
+
 

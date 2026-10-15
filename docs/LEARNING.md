@@ -156,3 +156,39 @@ Durability, resource failures, and database-to-queue delivery need separate desi
 
 Next: live Redis integration and claim/acknowledgement recovery, followed by the outbox.
 
+## 2026-10-14 — Leased queue claims and recovery
+
+Assistance: AI-assisted implementation, fault-injection tests, and documentation.
+
+Added atomic claim, acknowledgement, and bounded expired-claim recovery scripts.
+Each claim has a fresh UUID token and deadline calculated with Redis server time.
+Recovery returns expired payloads to pending; stale tokens cannot acknowledge a new
+claim. Key types are checked before mutation. No workflow effects are executed yet.
+
+Validation: Python 3.12 ran 37 tests locally: 31 passed and 6 live Redis contract
+checks were explicitly skipped because no Redis server was available. The six new
+emulator tests cover empty queues, acknowledgement/replay, concurrent claim ownership,
+crash recovery with a fresh queue object, bounded recovery, invalid inputs, and key
+type safety. Expiry is injected into the deadline set to avoid timing-dependent sleeps.
+CI now provisions Redis 7.4 and runs the same six checks against the real engine;
+its result must be inspected separately, not inferred from emulator success.
+
+Tradeoffs: this provides at-least-once delivery under retained Redis state, not
+exactly-once effects. A worker can finish after its lease expires, so later execution
+must be idempotent. There is no heartbeat/lease extension, dead-letter policy, or
+database/Redis transaction yet. Redis resource errors can still leave partial writes.
+
+Exercise: submit a synthetic command, claim it with a short lease, and stop before
+acknowledging. After expiry call recover_expired, claim again, and verify that the
+old token is rejected while the new token can acknowledge the same command.
+
+Interview question: Why use a fresh claim token instead of acknowledging by command ID?
+
+Answer outline: the same command may be redelivered after a worker stalls. If both
+workers acknowledge by command ID, the old worker can accidentally remove the newer
+worker's claim. A per-delivery token fences queue acknowledgement; duplicate-safe
+database effects still need a separate transaction/idempotency design.
+
+Next: transactional outbox delivery, followed by bounded retries and duplicate-safe execution.
+
+
