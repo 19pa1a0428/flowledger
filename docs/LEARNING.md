@@ -1,5 +1,38 @@
 # Learning journal
 
+## 2026-10-15 — Transactional command outbox
+
+Assistance: AI-assisted implementation, fault-injection tests, and documentation.
+
+Added a reversible command_outbox migration and optional initial command on repository
+creation. Workflow snapshot, initial event, and intent commit atomically. A bounded relay
+submits stable command IDs to Redis and marks delivery only after acceptance or identical
+replay. It does not execute transitions and is not yet exposed as an HTTP scheduling route.
+
+Validation: Python 3.12 ran 44 tests: 38 passed, 6 live Redis checks skipped (no local
+server). Seven new tests cover durable intent after engine restart, bounded batches,
+queue failure, crash after acceptance, full transaction rollback after flush, receipt
+conflicts, invalid intent and batch limits. PostgreSQL offline migration SQL generated
+successfully; SQLite migration upgrade/downgrade passed. No live PostgreSQL result is
+claimed. The restricted runtime stalled in TestClient; the full suite passed in the
+unrestricted runtime. Previous increment CI run 38660028320 completed successfully.
+
+Tradeoffs: concurrent relays can replay submissions; Redis receipts suppress duplicate
+enqueue only while retained. Poison rows stop a batch, delivered rows accumulate, and
+Redis loss after delivery marking requires reconciliation. No exactly-once execution,
+backoff, cleanup, or background relay loop is claimed.
+
+Exercise: run `python -m unittest tests.test_outbox.OutboxTests.test_crash_after_redis_acceptance_replays_without_second_enqueue -v`.
+Inspect why the retry marks the pending row delivered while the queue length stays one.
+
+Interview question: Why mark outbox delivery after queue submission rather than before?
+
+Answer outline: marking first can lose work if the process crashes before submission.
+Submitting first can cause replay after a crash, which a stable command ID and retained
+receipt make safe at the queue boundary. Execution still needs its own idempotency design.
+
+Next: bounded retry backoff and duplicate-safe worker execution.
+
 ## 2026-10-07 — Workflow lifecycle foundation
 
 Assistance: AI-assisted implementation and test creation.

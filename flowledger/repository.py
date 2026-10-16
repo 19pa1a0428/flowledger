@@ -6,8 +6,9 @@ from uuid import UUID
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
-from flowledger.database import EventRecord, WorkflowRecord
+from flowledger.database import EventRecord, OutboxRecord, WorkflowRecord
 from flowledger.domain import Event, Status, Workflow
+from flowledger.jobs import WorkerCommand
 
 
 SessionFactory = Callable[[], Session]
@@ -34,7 +35,13 @@ class SqlAlchemyRepository:
     def __init__(self, sessions: SessionFactory):
         self._sessions = sessions
 
-    def add(self, workflow: Workflow) -> Workflow:
+    def add(self, workflow: Workflow, command: WorkerCommand | None = None) -> Workflow:
+        """Optionally persist initial execution intent alongside the new workflow."""
+        if command is not None:
+            if (command.workflow_id != workflow.id
+                    or command.expected_version != workflow.version):
+                raise ValueError("Command must reference the new workflow and its version")
+            workflow.transition(command.target)  # Reject invalid intent before writing.
         record = WorkflowRecord(
             id=workflow.id, name=workflow.name, status=workflow.status.value,
             attempts=workflow.attempts, max_attempts=workflow.max_attempts,
@@ -47,6 +54,11 @@ class SqlAlchemyRepository:
         )
         with self._sessions.begin() as session:
             session.add(record)
+            if command is not None:
+                session.add(OutboxRecord(
+                    command_id=command.command_id, payload=command.model_dump_json(),
+                    created_at=datetime.now(timezone.utc),
+                ))
         return workflow
 
     def get(self, workflow_id: UUID) -> Workflow:

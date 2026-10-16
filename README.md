@@ -142,7 +142,42 @@ FLOWLEDGER_TEST_REDIS_URL=redis://localhost:6379/15 python -m unittest discover 
 
 Live tests delete only their four fixed FlowLedger queue keys after each test. They
 fail rather than clear pre-existing keys. Without the variable, live checks are
-explicitly skipped. Transactional outbox delivery and duplicate-safe execution are next.
+explicitly skipped. Duplicate-safe execution is next.
+
+## Transactional outbox
+
+After `python -m alembic upgrade head`, a new workflow can atomically retain its
+initial command for later Redis delivery. This is currently a library interface;
+the HTTP creation route does not schedule commands and no worker executes them yet.
+
+```python
+from sqlalchemy import create_engine
+from flowledger.domain import Workflow
+from flowledger.repository import SqlAlchemyRepository, build_session_factory
+from flowledger.outbox import relay_pending
+
+# Use your configured FLOWLEDGER_DATABASE_URL, with migrations applied.
+sessions = build_session_factory(create_engine(database_url))
+workflow = Workflow.create("synthetic outbox demo")
+command = WorkerCommand(command_id=uuid4(), workflow_id=workflow.id, expected_version=0)
+SqlAlchemyRepository(sessions).add(workflow, command)
+relay_pending(sessions, queue, limit=100)
+```
+
+The command must reference the new workflow and its version and request a valid
+transition. Creation does not execute that transition. The snapshot, initial event,
+and outbox row commit together. The relay marks delivery only after Redis accepts
+the command or recognizes an identical receipt. A failure leaves durable pending
+intent; a crash after Redis acceptance is replayed using the same command ID.
+
+Run the relay periodically in a future worker loop; it is not scheduled internally.
+Each row uses a separate transaction and errors stop the batch. Concurrent relays
+can submit the same command, relying on Redis deduplication, not distributed locks.
+There is no strict global delivery ordering. Poison rows can block progress; retry
+backoff, dead letters, retention cleanup, indexes for large backlogs, and duplicate-safe
+execution remain future work. Set Redis connection/socket timeouts for bounded outages.
+Delivered rows are retained for audit. Redis data loss after delivery marking still
+requires reconciliation; this outbox does not guarantee exactly-once effects.
 
 ## Remaining stack
 
