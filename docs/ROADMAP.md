@@ -30,7 +30,9 @@ will produce a finished feature. Work progresses only when the preceding increme
    require a disposable Redis URL locally. No executing worker or exactly-once claim.
 10. DONE: Connect initial workflow creation intent to queue delivery through a
     transactional outbox, with rollback, restart, outage, and replay tests.
-11. Add bounded retry backoff and demonstrate duplicate-safe execution.
+11. PARTIAL: Database-only duplicate-safe execution and crash-before-ack recovery
+    demonstrated. Next: bounded retry backoff, durable retry scheduling and terminal
+    handling for invalid/stale commands.
 
 ## Working cadence
 
@@ -47,5 +49,6 @@ Do not merge code with known failing required checks.
 
 No employer code, customer information, real recipient lists, or credentials.
 No AI add-on until the deterministic workflow platform works and can be measured.
+
 
 

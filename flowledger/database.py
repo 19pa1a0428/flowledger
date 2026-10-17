@@ -11,6 +11,13 @@ class Base(DeclarativeBase):
     pass
 
 
+class CommandReceipt(Base):
+    __tablename__ = "command_receipts"
+
+    command_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class OutboxRecord(Base):
     __tablename__ = "command_outbox"
 
@@ -67,3 +74,4 @@ class EventRecord(Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False)
     workflow: Mapped[WorkflowRecord] = relationship(back_populates="events")
+

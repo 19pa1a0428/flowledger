@@ -1,5 +1,33 @@
 # Learning journal
 
+## 2026-10-16 — Duplicate-safe database command execution
+
+Assistance: AI-assisted code, migration, fault-injection tests and documentation.
+
+Added durable command receipts atomically with workflow transitions and history.
+The bounded run_once worker poll acknowledges only after database commit. Identical
+replays do not reapply the transition; changed payloads conflict. Receipt uniqueness
+arbitrates concurrent duplicates; a rejected transaction must be retried afresh.
+
+Validation: Python 3.12 ran 49 tests: 43 passed and 6 live Redis checks skipped.
+Five new tests cover restart replay, changed payload rejection, concurrent duplicates,
+stale-command rollback, commit rollback, and a crash after commit before acknowledgement.
+Migration upgrade/downgrade and PostgreSQL offline SQL generation passed. No live
+PostgreSQL or live Redis execution result is claimed. Existing CI run 38831496778
+completed successfully. FastAPI TestClient required the unrestricted runtime.
+
+Scope: database-only transition effects, not arbitrary external actions or an
+automatic job handler. Errors leave claims for recovery. Backoff and terminal
+handling remain unfinished; roadmap item 11 is deliberately partial.
+
+Exercise: run `python -m unittest tests.test_worker.WorkerTests.test_crash_after_commit_before_ack_is_safe -v`.
+Inspect the two events after redelivery and locate the durable receipt.
+
+Interview question: Why must the execution receipt and effect share a transaction?
+Answer outline: a receipt committed first could suppress an effect that never ran;
+an effect committed first could run twice after a crash. Atomic commit avoids both
+windows for effects inside this database, not for external network calls.
+
 ## 2026-10-15 — Transactional command outbox
 
 Assistance: AI-assisted implementation, fault-injection tests, and documentation.
@@ -223,5 +251,6 @@ worker's claim. A per-delivery token fences queue acknowledgement; duplicate-saf
 database effects still need a separate transaction/idempotency design.
 
 Next: transactional outbox delivery, followed by bounded retries and duplicate-safe execution.
+
 
 

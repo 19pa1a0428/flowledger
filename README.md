@@ -181,8 +181,25 @@ requires reconciliation; this outbox does not guarantee exactly-once effects.
 
 ## Remaining stack
 
+## Database-only worker execution
+
+Apply migrations before using `flowledger.worker.run_once(claims, repository)`.
+It claims at most one command, commits a workflow transition and command receipt
+in the same database transaction, then acknowledges Redis. An identical command
+replay is a no-op even after restart or Redis receipt loss. Changed payloads for
+an executed ID raise SubmissionConflict. Receipts are retained indefinitely.
+
+Only database transitions are supported: this does not make external effects
+exactly-once, execute a notification, or automatically finish a running workflow.
+The caller must periodically recover expired claims. Errors propagate without
+acknowledgement; concurrent receipt insertion can raise a database integrity error
+and requires replay in a fresh transaction. Invalid/stale commands currently remain
+recoverable poison work. Bounded backoff, dead letters, receipt retention policy,
+and a supervised worker loop remain unfinished. Do not busy-loop on failures.
+
 FastAPI, PostgreSQL, SQLAlchemy/Alembic, a Redis-backed worker, React/TypeScript,
 Docker, GitHub Actions, and OpenTelemetry. Start as a modular application with a
 worker; split services only for a demonstrated need.
+
 
 
