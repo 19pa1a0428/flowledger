@@ -19,6 +19,7 @@ class MigrationTests(unittest.TestCase):
     def test_upgrade_builds_constrained_workflow_schema(self):
         command.upgrade(self.config, "head")
         inspector = inspect(create_engine(self.url))
+        self.assertIn("rejection", {c["name"] for c in inspector.get_columns("command_receipts")})
         self.assertEqual(set(inspector.get_table_names()), {"alembic_version", "workflows", "workflow_events", "command_outbox", "command_receipts"})
         self.assertEqual(
             {column["name"] for column in inspector.get_columns("workflows")},

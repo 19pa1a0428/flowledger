@@ -191,11 +191,22 @@ an executed ID raise SubmissionConflict. Receipts are retained indefinitely.
 
 Only database transitions are supported: this does not make external effects
 exactly-once, execute a notification, or automatically finish a running workflow.
-The caller must periodically recover expired claims. Errors propagate without
-acknowledgement; concurrent receipt insertion can raise a database integrity error
-and requires replay in a fresh transaction. Invalid/stale commands currently remain
-recoverable poison work. Bounded backoff, dead letters, receipt retention policy,
-and a supervised worker loop remain unfinished. Do not busy-loop on failures.
+The caller must periodically recover expired claims. The worker retains terminal
+domain rejections before acknowledging: `command_receipts.rejection` is
+`workflow_missing`, `stale_version`, or `invalid_transition`; NULL means applied.
+A savepoint rolls back the rejected transition while the outer transaction commits
+the receipt. Replays of rejected commands do not reconsider them, even if workflow
+state later changes. Inspect receipts through a database session; no inspection API
+or automatic resubmission exists yet. Corrected intent needs a new command ID and
+the current workflow version. Direct `repository.execute` retains its strict default
+(exceptions and no receipt); worker polling opts into `reject_invalid=True`.
+
+Infrastructure errors, unexpected exceptions and changed-payload command-ID conflicts
+still propagate without acknowledgement. Concurrent receipt insertion can raise a
+database integrity error and requires replay in a fresh transaction. Malformed queue
+payloads are not yet quarantined. Bounded backoff, retry exhaustion/dead letters,
+receipt retention policy, and a supervised worker loop remain unfinished. Do not
+busy-loop on failures. Apply the latest migration before deploying this worker.
 
 FastAPI, PostgreSQL, SQLAlchemy/Alembic, a Redis-backed worker, React/TypeScript,
 Docker, GitHub Actions, and OpenTelemetry. Start as a modular application with a

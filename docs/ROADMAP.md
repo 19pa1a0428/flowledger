@@ -31,8 +31,9 @@ will produce a finished feature. Work progresses only when the preceding increme
 10. DONE: Connect initial workflow creation intent to queue delivery through a
     transactional outbox, with rollback, restart, outage, and replay tests.
 11. PARTIAL: Database-only duplicate-safe execution and crash-before-ack recovery
-    demonstrated. Next: bounded retry backoff, durable retry scheduling and terminal
-    handling for invalid/stale commands.
+    demonstrated. DONE: durable terminal handling for validated missing/stale/invalid
+    domain commands, with rejection replay and rollback tests. Next: bounded retry
+    backoff, durable retry scheduling, retry exhaustion and malformed-payload quarantine.
 
 ## Working cadence
 

@@ -7,7 +7,7 @@ from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from flowledger.database import EventRecord, OutboxRecord, WorkflowRecord
-from flowledger.domain import Event, Status, Workflow
+from flowledger.domain import Event, InvalidTransition, Status, Workflow
 from flowledger.jobs import WorkerCommand
 
 
@@ -72,11 +72,12 @@ class SqlAlchemyRepository:
         with self._sessions.begin() as session:
             return self._transition(session, workflow_id, target, expected_version)
 
-    def execute(self, command: WorkerCommand) -> bool:
+    def execute(self, command: WorkerCommand, *, reject_invalid: bool = False) -> bool:
         """Atomically retain a receipt and apply one database-only transition.
 
-        True means applied; False means identical replay. On a concurrent insert
-        or version conflict the caller must retry the whole command in a new session.
+        True means newly handled; False means identical replay. Workers may retain
+        terminal domain rejections with reject_invalid=True. Infrastructure errors
+        and command-ID payload conflicts still propagate and roll back.
         """
         from flowledger.database import CommandReceipt
         from flowledger.jobs import SubmissionConflict
@@ -88,10 +89,23 @@ class SqlAlchemyRepository:
                 if receipt.payload != payload:
                     raise SubmissionConflict("Command ID already executed with different payload")
                 return False
-            session.add(CommandReceipt(command_id=command.command_id, payload=payload))
+            receipt = CommandReceipt(command_id=command.command_id, payload=payload)
+            session.add(receipt)
             session.flush()  # Uniqueness arbitrates concurrent duplicate command IDs.
-            self._transition(session, command.workflow_id, command.target,
-                             command.expected_version)
+            try:
+                # Isolate a rejected transition from its durable receipt. This also
+                # protects history if transition implementation gains earlier writes.
+                with session.begin_nested():
+                    self._transition(session, command.workflow_id, command.target,
+                                     command.expected_version)
+            except (KeyError, ConcurrencyConflict, InvalidTransition) as error:
+                if not reject_invalid:
+                    raise
+                receipt.rejection = (
+                    "workflow_missing" if isinstance(error, KeyError) else
+                    "stale_version" if isinstance(error, ConcurrencyConflict) else
+                    "invalid_transition"
+                )
         return True
 
     def _transition(self, session: Session, workflow_id: UUID, target: Status,

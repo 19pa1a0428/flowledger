@@ -16,6 +16,7 @@ class CommandReceipt(Base):
 
     command_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
+    rejection: Mapped[str | None] = mapped_column(String(30))
 
 
 class OutboxRecord(Base):

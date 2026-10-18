@@ -12,6 +12,6 @@ def run_once(queue: RedisClaimQueue, repository: SqlAlchemyRepository) -> bool:
     claim = queue.claim()
     if claim is None:
         return False
-    repository.execute(claim.command)
+    repository.execute(claim.command, reject_invalid=True)
     queue.acknowledge(claim.token)
     return True

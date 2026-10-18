@@ -1,5 +1,39 @@
 # Learning journal
 
+## 2026-10-17 — Durable terminal command rejection
+
+Assistance: AI-assisted implementation, migration, fault-injection tests and docs.
+
+Worker polling now records terminal domain rejection reasons before acknowledgement,
+preventing unchanged stale, missing-workflow and invalid-transition commands from
+cycling forever. A nested transaction rolls back the attempted transition while the
+outer transaction retains the command payload and rejection. Identical redelivery
+checks that receipt; changed payloads still conflict. Strict direct execution remains
+backward compatible. Unknown exceptions and infrastructure failures remain recoverable.
+
+Validation: Python 3.12 ran 53 tests: 47 passed, 6 live Redis checks skipped. Four new
+worker tests cover all three rejection categories, restart/replay after commit-before-ack
+failure, rejection commit rollback without acknowledgement, and unexpected error
+propagation. SQLite migration upgrade/downgrade and PostgreSQL offline SQL generation
+passed. Existing CI run 38987585375 succeeded. Full-suite TestClient checks required
+the unrestricted runtime; tests used existing installed dependencies. No live
+PostgreSQL or Redis validation is claimed.
+
+Scope: validated command envelopes only; malformed payloads and command-ID conflicts
+are not quarantined. Retry backoff, durable scheduling and exhaustion handling remain
+unfinished, so roadmap item 11 remains partial. Receipts are indefinitely retained;
+there is no rejection inspection API or automatic retry. A corrected command requires
+a new ID and current version; the rejected command's outcome is permanent.
+
+Exercise: run `python -m unittest tests.test_worker.WorkerTests.test_rejected_receipt_survives_restart_and_crash_before_ack -v`.
+Inspect why the recovered command is acknowledged without invoking `_transition` again.
+
+Interview question: Why commit a rejection before acknowledging the queue claim?
+Answer outline: acknowledging first can lose the diagnostic outcome after a crash.
+Committing first allows safe redelivery: the durable receipt preserves the decision
+and prevents repeated processing. Database outages must not be recorded as permanent
+domain failures.
+
 ## 2026-10-16 — Duplicate-safe database command execution
 
 Assistance: AI-assisted code, migration, fault-injection tests and documentation.
