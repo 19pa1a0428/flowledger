@@ -5,6 +5,7 @@ import unittest
 
 from sqlalchemy import event, select, func
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.exc import OperationalError, IntegrityError
 
 from flowledger.claims import RedisClaimQueue
 from flowledger.database import CommandReceipt
@@ -39,6 +40,8 @@ class WorkerTests(unittest.TestCase):
         token = self.redis.zrange("flowledger:{jobs}:deadlines", 0, -1)[0]
         self.redis.zadd("flowledger:{jobs}:deadlines", {token: 0})
         self.assertEqual(claims.recover_expired(), 1)
+        self.redis.zadd("flowledger:{jobs}:delayed", {command.model_dump_json(): 0})
+        claims.promote_due()
         self.assertTrue(run_once(claims, self.repo))
         self.assertFalse(run_once(claims, self.repo))
         self.assertEqual(len(self.repo.get(command.workflow_id).events), 2)
@@ -119,6 +122,8 @@ class WorkerTests(unittest.TestCase):
         token = self.redis.zrange("flowledger:{jobs}:deadlines", 0, -1)[0]
         self.redis.zadd("flowledger:{jobs}:deadlines", {token: 0})
         claims.recover_expired()
+        self.redis.zadd("flowledger:{jobs}:delayed", {command.model_dump_json(): 0})
+        claims.promote_due()
         with patch.object(restarted, "_transition", side_effect=AssertionError("reapplied")):
             self.assertTrue(run_once(claims, restarted))
         with self.assertRaises(SubmissionConflict):
@@ -159,3 +164,53 @@ class WorkerTests(unittest.TestCase):
             self.assertIsNone(session.get(CommandReceipt, command.command_id))
         self.assertEqual(self.repo.get(command.workflow_id).version, 0)
         self.assertEqual(self.redis.hlen("flowledger:{jobs}:claims"), 1)
+
+    def test_database_errors_schedule_retry_then_apply_once(self):
+        for error_type in (OperationalError, IntegrityError):
+            with self.subTest(error=error_type.__name__):
+                command = self.stage()
+                self.queue.submit(command)
+                claims = RedisClaimQueue(self.redis)
+                error = error_type("synthetic", {}, RuntimeError("synthetic outage"))
+                with patch.object(self.repo, "execute", side_effect=error):
+                    self.assertTrue(run_once(claims, self.repo))
+                with self.sessions() as session:
+                    self.assertIsNone(session.get(CommandReceipt, command.command_id))
+                self.assertEqual(self.repo.get(command.workflow_id).version, 0)
+                self.assertEqual(self.redis.hlen("flowledger:{jobs}:claims"), 0)
+                self.assertFalse(run_once(claims, self.repo))
+                self.redis.zadd("flowledger:{jobs}:delayed", {command.model_dump_json(): 0})
+                claims.promote_due()
+                self.assertTrue(run_once(claims, self.repo))
+                self.assertEqual(self.repo.get(command.workflow_id).version, 1)
+                self.assertEqual(self.redis.hlen("flowledger:{jobs}:failures"), 0)
+
+    def test_retry_scheduling_outage_leaves_claim_recoverable(self):
+        command = self.stage()
+        self.queue.submit(command)
+        claims = RedisClaimQueue(self.redis)
+        error = OperationalError("synthetic", {}, RuntimeError("synthetic outage"))
+        with patch.object(self.repo, "execute", side_effect=error):
+            with patch.object(claims, "retry", side_effect=ConnectionError):
+                with self.assertRaises(ConnectionError):
+                    run_once(claims, self.repo)
+        self.assertEqual(self.redis.hlen("flowledger:{jobs}:claims"), 1)
+        with self.sessions() as session:
+            self.assertIsNone(session.get(CommandReceipt, command.command_id))
+
+    def test_ambiguous_commit_retries_without_duplicating_effect(self):
+        command = self.stage()
+        self.queue.submit(command)
+        claims = RedisClaimQueue(self.redis)
+        def commit_then_disconnect(*args, **kwargs):
+            self.repo.execute(*args, **kwargs)
+            raise OperationalError("synthetic", {}, RuntimeError("lost commit response"))
+        from unittest.mock import Mock
+        ambiguous = Mock()
+        ambiguous.execute.side_effect = commit_then_disconnect
+        self.assertTrue(run_once(claims, ambiguous))
+        self.assertEqual(self.repo.get(command.workflow_id).version, 1)
+        self.redis.zadd("flowledger:{jobs}:delayed", {command.model_dump_json(): 0})
+        claims.promote_due()
+        self.assertTrue(run_once(claims, self.repo))
+        self.assertEqual(len(self.repo.get(command.workflow_id).events), 2)

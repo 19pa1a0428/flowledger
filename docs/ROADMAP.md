@@ -32,8 +32,11 @@ will produce a finished feature. Work progresses only when the preceding increme
     transactional outbox, with rollback, restart, outage, and replay tests.
 11. PARTIAL: Database-only duplicate-safe execution and crash-before-ack recovery
     demonstrated. DONE: durable terminal handling for validated missing/stale/invalid
-    domain commands, with rejection replay and rollback tests. Next: bounded retry
-    backoff, durable retry scheduling, retry exhaustion and malformed-payload quarantine.
+    domain commands, with rejection replay and rollback tests. DONE: Redis-retained
+    capped exponential retry scheduling, bounded due promotion, token-fenced retry
+    and exhaustion storage for reported database errors and recovered lease expiry.
+    Next: explicit malformed-payload quarantine and command-ID conflict handling;
+    a supervised polling/maintenance loop and exhaustion inspection/replay remain later work.
 
 ## Working cadence
 

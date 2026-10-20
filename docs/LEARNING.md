@@ -1,5 +1,46 @@
 # Learning journal
 
+## 2026-10-19 — Redis-retained retry backoff and exhaustion
+
+Assistance: AI-assisted queue scripts, worker error handling, tests and documentation.
+
+Added configurable capped exponential delays, persisted Redis failure counters,
+bounded due promotion and exhausted-payload retention. Explicit database operational/
+integrity failures and expired-lease recovery use the same token-fenced scheduling
+script logic. Successful acknowledgement clears counters; unknown errors still
+propagate. Worker retries start after repository transaction exit rather than inside
+a failed session. No real notifications or paid infrastructure were used.
+
+Validation: Python 3.12 ran 72 tests: 58 passed, 14 live Redis checks skipped because
+no local Redis server/URL was available. Eight new queue checks also run against Redis
+7.4 in CI: capped server-time deadlines, bounded promotion, restart through a fresh
+client, exhaustion, concurrent single-winner scheduling/promotion, expired budget,
+stale ownership, bad counters/key types and policy bounds. Three new worker tests
+cover database failure then success, retry-scheduling outage, and ambiguous commit
+replay without duplicate effects. Existing API, domain, repository, migration and
+rollback checks passed; PostgreSQL offline SQL generation passed. Prior CI run
+39082355654 succeeded. No live PostgreSQL/Redis or server-restart durability result
+is claimed; local queue tests used the Lua-capable emulator and retained state.
+
+Tradeoffs: Redis retention/persistence and no eviction remain required. Lua resource
+failures are not rollbacks. The budget counts reported errors and recovered expiry,
+not workflow attempts; exhausted delivery may already have a committed DB receipt.
+Inspect that receipt before deciding on corrected intent. Exhausted data accumulates,
+there is no jitter or replay API, and maintenance must be called periodically even
+when idle. All workers need the same policy and a coordinated rollout (old workers
+ignore backoff). Malformed-payload quarantine and command-ID conflict handling remain
+unfinished, so roadmap item 11 remains partial.
+
+Exercise: run `python -m unittest tests.test_claims.ClaimTests.test_retry_exhaustion_and_restart -v`.
+Inspect why a fresh queue object retains the failure budget and the second failure
+leaves no pending command. The test injects due scores; production uses Redis time.
+
+Interview question: Why store retry deadlines instead of sleeping inside a worker?
+Answer outline: process-local timers disappear on restart and occupy workers. A
+retained sorted set lets any maintenance caller promote due work in bounded batches.
+Scheduling and claim release must be atomic, and execution still needs durable
+idempotency because database commits and queue operations cannot share a transaction.
+
 ## 2026-10-17 — Durable terminal command rejection
 
 Assistance: AI-assisted implementation, migration, fault-injection tests and docs.

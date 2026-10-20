@@ -113,6 +113,7 @@ from flowledger.claims import RedisClaimQueue
 
 worker_queue = RedisClaimQueue(Redis.from_url("redis://localhost:6379/0"))
 worker_queue.recover_expired(limit=100)  # Call periodically, including when idle.
+worker_queue.promote_due(limit=100)      # Expired work is delayed, not immediately pending.
 claim = worker_queue.claim(lease_ms=30_000)
 if claim is not None:
     print(claim.command)  # Inspection only: no workflow effects executed here.
@@ -120,8 +121,9 @@ if claim is not None:
 ```
 
 Claiming atomically moves one pending payload into a token-indexed hash and lease
-deadline set. Redis server time determines expiry. Recovery requeues expired claims
-in bounded batches; each new claim receives a new token. Acknowledgements for old,
+deadline set. Redis server time determines expiry and retry deadlines. Recovery moves
+expired claims to delayed or exhausted storage in bounded batches; due promotion
+returns delayed payloads to pending. Each new claim receives a new token. Acknowledgements for old,
 expired, or already acknowledged tokens return False. There is no lease renewal yet;
 work exceeding its lease can be delivered again. A real worker must acknowledge only
 after its durable effect commits, and must make that effect duplicate-safe. Claim
@@ -140,15 +142,15 @@ dedicated disposable database with no existing FlowLedger keys (never production
 FLOWLEDGER_TEST_REDIS_URL=redis://localhost:6379/15 python -m unittest discover -s tests -v
 ```
 
-Live tests delete only their four fixed FlowLedger queue keys after each test. They
+Live tests delete only their seven fixed FlowLedger queue keys after each test. They
 fail rather than clear pre-existing keys. Without the variable, live checks are
-explicitly skipped. Duplicate-safe execution is next.
+explicitly skipped. These checks cover retry scheduling as well as claims.
 
 ## Transactional outbox
 
 After `python -m alembic upgrade head`, a new workflow can atomically retain its
 initial command for later Redis delivery. This is currently a library interface;
-the HTTP creation route does not schedule commands and no worker executes them yet.
+the HTTP creation route does not schedule commands. Worker polling is a separate library call.
 
 ```python
 from sqlalchemy import create_engine
@@ -174,8 +176,9 @@ Run the relay periodically in a future worker loop; it is not scheduled internal
 Each row uses a separate transaction and errors stop the batch. Concurrent relays
 can submit the same command, relying on Redis deduplication, not distributed locks.
 There is no strict global delivery ordering. Poison rows can block progress; retry
-backoff, dead letters, retention cleanup, indexes for large backlogs, and duplicate-safe
-execution remain future work. Set Redis connection/socket timeouts for bounded outages.
+backoff for the relay itself, retention cleanup and indexes for large backlogs remain
+future work. Worker execution has its own retry policy below. Set Redis
+connection/socket timeouts for bounded outages.
 Delivered rows are retained for audit. Redis data loss after delivery marking still
 requires reconciliation; this outbox does not guarantee exactly-once effects.
 
@@ -201,12 +204,42 @@ or automatic resubmission exists yet. Corrected intent needs a new command ID an
 the current workflow version. Direct `repository.execute` retains its strict default
 (exceptions and no receipt); worker polling opts into `reject_invalid=True`.
 
-Infrastructure errors, unexpected exceptions and changed-payload command-ID conflicts
-still propagate without acknowledgement. Concurrent receipt insertion can raise a
-database integrity error and requires replay in a fresh transaction. Malformed queue
-payloads are not yet quarantined. Bounded backoff, retry exhaustion/dead letters,
-receipt retention policy, and a supervised worker loop remain unfinished. Do not
-busy-loop on failures. Apply the latest migration before deploying this worker.
+Database OperationalError and IntegrityError now release the rolled-back claim into
+the retry schedule. Unknown exceptions and changed-payload command-ID conflicts still
+propagate, leaving the claim for expiry recovery. Redis errors also propagate.
+Malformed queue payloads are not yet explicitly quarantined. Apply the latest
+migration before deploying this worker.
+
+## Bounded worker retries
+
+`RedisClaimQueue(client, RetryPolicy(max_failures=3, base_delay_ms=1000,
+max_delay_ms=60000))` configures reported database failures and recovered lease
+expiries. Use the same policy on every worker/recovery caller. With the defaults,
+the first failure waits 1 second, the second 2 seconds, and the third goes to
+`flowledger:{jobs}:exhausted`. Delays are `min(cap, base * 2**(failures-1))`;
+there is no jitter yet. The failure budget is separate from workflow `max_attempts`.
+
+`retry(token)` atomically schedules the original payload, increments its Redis
+failure count and removes the active claim, returning `scheduled`, `exhausted`, or
+`stale`. Stale/expired tokens cannot consume another owner's budget. Recovery applies
+the same policy to expired claims. Call `recover_expired()` and `promote_due()`
+periodically, even when `run_once()` returns False; batches are limited to 1000.
+No internal timer or supervised loop exists yet. Successful acknowledgement clears
+the payload's failure counter. No sleeping worker or in-memory timer owns a retry.
+
+Delayed payloads and counters survive client restart only while Redis state survives.
+Use persistence and no eviction; Lua resource failures can still leave partial writes.
+Exhausted payloads and their counters are retained indefinitely for inspection, not
+automatically replayed. There is no inspection/replay API or retention cleanup yet.
+Inspect `command_receipts` before manually creating new intent: an expired claim or
+ambiguous commit response can exhaust the queue budget even if its database effect
+already committed. Exhaustion is a delivery outcome, not proof that the workflow
+transition failed. Database receipts remain the duplicate-effect safeguard.
+
+Stop old workers before rollout: older recovery code requeues immediately and does
+not honor the new retry budget. No Redis key migration is required for empty/new
+retry state; existing claims begin with zero recorded failures. Malformed payload
+quarantine and command-ID conflict handling are the next reliability increment.
 
 FastAPI, PostgreSQL, SQLAlchemy/Alembic, a Redis-backed worker, React/TypeScript,
 Docker, GitHub Actions, and OpenTelemetry. Start as a modular application with a
