@@ -142,7 +142,7 @@ dedicated disposable database with no existing FlowLedger keys (never production
 FLOWLEDGER_TEST_REDIS_URL=redis://localhost:6379/15 python -m unittest discover -s tests -v
 ```
 
-Live tests delete only their seven fixed FlowLedger queue keys after each test. They
+Live tests delete only their eight fixed FlowLedger queue keys after each test. They
 fail rather than clear pre-existing keys. Without the variable, live checks are
 explicitly skipped. These checks cover retry scheduling as well as claims.
 
@@ -204,11 +204,11 @@ or automatic resubmission exists yet. Corrected intent needs a new command ID an
 the current workflow version. Direct `repository.execute` retains its strict default
 (exceptions and no receipt); worker polling opts into `reject_invalid=True`.
 
-Database OperationalError and IntegrityError now release the rolled-back claim into
-the retry schedule. Unknown exceptions and changed-payload command-ID conflicts still
-propagate, leaving the claim for expiry recovery. Redis errors also propagate.
-Malformed queue payloads are not yet explicitly quarantined. Apply the latest
-migration before deploying this worker.
+Database OperationalError and IntegrityError release the rolled-back claim into the
+retry schedule. Unknown exceptions still propagate, leaving the claim for expiry
+recovery. Malformed queue payloads and changed-payload command-ID conflicts are
+atomically retained in quarantine and removed from active delivery. Redis errors
+propagate. Apply the latest migration before deploying this worker.
 
 ## Bounded worker retries
 
@@ -238,8 +238,26 @@ transition failed. Database receipts remain the duplicate-effect safeguard.
 
 Stop old workers before rollout: older recovery code requeues immediately and does
 not honor the new retry budget. No Redis key migration is required for empty/new
-retry state; existing claims begin with zero recorded failures. Malformed payload
-quarantine and command-ID conflict handling are the next reliability increment.
+retry state; existing claims begin with zero recorded failures.
+
+## Command quarantine
+
+Claims that fail `WorkerCommand` validation are moved to
+`flowledger:{jobs}:quarantine` with reason `malformed_command`. Valid commands whose
+ID already has a different durable execution payload are quarantined with reason
+`command_id_conflict`. Each retained JSON record contains the original payload,
+reason and Redis-server quarantine time in milliseconds. Validation details are not
+stored because they may change between application versions; the original payload
+can be revalidated during investigation.
+
+Quarantine is token-fenced and atomic: only the active, unexpired owner can remove a
+claim and append its record. Stale tokens cannot quarantine newer ownership. Key
+types are checked before claiming, so a broken quarantine key leaves input pending;
+an outage after claim keeps it recoverable. Quarantine clears the payload's retry
+counter and is terminal—there is no automatic replay, API, retention cleanup or
+operator UI yet. Correct the cause and submit a new command ID rather than editing
+retained Redis data. Quarantine depends on the same Redis persistence/no-eviction
+assumptions as the queue and is not an audit substitute for database receipts.
 
 FastAPI, PostgreSQL, SQLAlchemy/Alembic, a Redis-backed worker, React/TypeScript,
 Docker, GitHub Actions, and OpenTelemetry. Start as a modular application with a

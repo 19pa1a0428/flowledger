@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from redis import Redis
+from pydantic import ValidationError
 
 from flowledger.jobs import WorkerCommand
 
@@ -23,9 +24,13 @@ class RetryPolicy:
             raise ValueError("Expected at most 100 failures and base delay <= maximum")
 
 
+class MalformedCommandQuarantined(ValueError):
+    """The claimed payload was retained in quarantine instead of redelivered."""
+
+
 # Validate every key before mutation. Redis script errors are not rollbacks.
 _PRELUDE = """
-for i, expected in ipairs({'list', 'hash', 'zset', 'hash', 'zset', 'list'}) do
+for i, expected in ipairs({'list', 'hash', 'zset', 'hash', 'zset', 'list', 'list'}) do
     local actual = redis.call('TYPE', KEYS[i]).ok
     if actual ~= 'none' and actual ~= expected then
         return redis.error_reply('Invalid claim key type')
@@ -106,9 +111,22 @@ for _, payload in ipairs(payloads) do
 end
 return #payloads
 """
+_QUARANTINE = _PRELUDE + """
+local deadline = redis.call('ZSCORE', KEYS[3], ARGV[1])
+if not deadline or tonumber(deadline) <= now then return 0 end
+local payload = redis.call('HGET', KEYS[2], ARGV[1])
+if not payload then return redis.error_reply('Missing claimed payload') end
+local record = cjson.encode({payload=payload, reason=ARGV[2], quarantined_at_ms=now})
+redis.call('RPUSH', KEYS[7], record)
+redis.call('HDEL', KEYS[4], payload)
+redis.call('HDEL', KEYS[2], ARGV[1])
+redis.call('ZREM', KEYS[3], ARGV[1])
+return 1
+"""
 _KEYS = ['flowledger:{jobs}:pending', 'flowledger:{jobs}:claims',
          'flowledger:{jobs}:deadlines', 'flowledger:{jobs}:failures',
-         'flowledger:{jobs}:delayed', 'flowledger:{jobs}:exhausted']
+         'flowledger:{jobs}:delayed', 'flowledger:{jobs}:exhausted',
+         'flowledger:{jobs}:quarantine']
 
 
 @dataclass(frozen=True)
@@ -125,6 +143,7 @@ class RedisClaimQueue:
         self._recover = client.register_script(_RECOVER)
         self._retry = client.register_script(_RETRY)
         self._promote = client.register_script(_PROMOTE)
+        self._quarantine = client.register_script(_QUARANTINE)
 
     def claim(self, lease_ms: int = 30_000) -> Claim | None:
         self._positive_int(lease_ms)
@@ -132,7 +151,13 @@ class RedisClaimQueue:
         payload = self._claim(keys=_KEYS, args=[token, lease_ms])
         if payload is None:
             return None
-        return Claim(token, WorkerCommand.model_validate_json(payload))
+        try:
+            command = WorkerCommand.model_validate_json(payload)
+        except ValidationError as error:
+            if not self.quarantine(token, "malformed_command"):
+                raise RuntimeError("Claim expired before malformed payload quarantine") from error
+            raise MalformedCommandQuarantined("Malformed command moved to quarantine") from error
+        return Claim(token, command)
 
     def acknowledge(self, token: str) -> bool:
         """Reject unknown, expired, or already acknowledged claim tokens."""
@@ -160,6 +185,12 @@ class RedisClaimQueue:
         """Move a bounded due batch to pending; call periodically while idle."""
         self._batch_size(limit)
         return int(self._promote(keys=_KEYS, args=[limit]))
+
+    def quarantine(self, token: str, reason: str) -> bool:
+        """Atomically retain an active claim and remove it from delivery state."""
+        if reason not in {"malformed_command", "command_id_conflict"}:
+            raise ValueError("Unsupported quarantine reason")
+        return bool(self._quarantine(keys=_KEYS, args=[token, reason]))
 
     @staticmethod
     def _batch_size(limit: int) -> None:

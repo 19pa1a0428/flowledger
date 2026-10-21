@@ -1,5 +1,41 @@
 # Learning journal
 
+## 2026-10-20 — Poison-command quarantine
+
+Assistance: AI-assisted Redis quarantine design, worker handling, tests and docs.
+
+Malformed JSON/schema envelopes and valid commands that reuse an executed ID with a
+different payload now leave active delivery through an atomic, token-fenced quarantine
+operation. Records retain the original payload, a stable reason and Redis-server time.
+Malformed validation is handled after claim without losing the token; command-ID
+conflicts are distinguished from transient database failures and are not retried.
+Quarantine storage failures preserve pending or claimed work for later recovery.
+
+Validation: Python 3.12 ran 81 tests: 64 passed and 17 live Redis checks skipped
+because no local server/URL was available. Six new emulator/worker tests cover invalid
+JSON and schema versions, structured records, stale tokens, unsupported reasons,
+wrong quarantine key type, worker continuation, changed-payload conflicts and
+quarantine outage recovery. The inherited queue contract will run the new checks
+against Redis 7.4 in CI. Existing API, domain, repository, migration, retry and crash
+checks passed. PostgreSQL offline migration SQL generation passed. Prior retry CI run
+39349970714 passed on Python 3.11–3.13 with Redis 7.4. No new live PostgreSQL/Redis
+or server-restart durability result is claimed locally.
+
+Tradeoffs: quarantine is Redis-retained operational evidence, not the durable database
+audit log. It has no automatic replay, inspection API, retention cleanup or operator
+UI and depends on persistence/no eviction. Validation error text is intentionally not
+stored; it can change across Pydantic releases, while the stable reason and original
+payload are sufficient to revalidate. Corrected intent needs a new command ID.
+
+Exercise: run `python -m unittest tests.test_claims.ClaimTests.test_malformed_payload_is_quarantined_atomically -v`.
+Inspect the retained record and confirm recovery finds no expired claim for that input.
+
+Interview question: Why quarantine poison work atomically with claim removal?
+Answer outline: removing first can lose evidence if retaining the record fails; writing
+first in a separate operation can duplicate quarantine records after a crash. One
+token-fenced Lua operation makes the active delivery leave claim state exactly when
+its diagnostic record is retained. This is atomic only inside Redis, not with the DB.
+
 ## 2026-10-19 — Redis-retained retry backoff and exhaustion
 
 Assistance: AI-assisted queue scripts, worker error handling, tests and documentation.

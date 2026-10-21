@@ -30,13 +30,15 @@ will produce a finished feature. Work progresses only when the preceding increme
    require a disposable Redis URL locally. No executing worker or exactly-once claim.
 10. DONE: Connect initial workflow creation intent to queue delivery through a
     transactional outbox, with rollback, restart, outage, and replay tests.
-11. PARTIAL: Database-only duplicate-safe execution and crash-before-ack recovery
-    demonstrated. DONE: durable terminal handling for validated missing/stale/invalid
+11. DONE: Database-only duplicate-safe execution and crash-before-ack recovery
+    demonstrated. Durable terminal handling for validated missing/stale/invalid
     domain commands, with rejection replay and rollback tests. DONE: Redis-retained
     capped exponential retry scheduling, bounded due promotion, token-fenced retry
     and exhaustion storage for reported database errors and recovered lease expiry.
-    Next: explicit malformed-payload quarantine and command-ID conflict handling;
-    a supervised polling/maintenance loop and exhaustion inspection/replay remain later work.
+    Malformed envelopes and changed-payload command-ID conflicts are atomically
+    quarantined with original payload, reason and Redis-server time.
+12. NEXT: Add a supervised bounded worker/maintenance loop, graceful shutdown and
+    inspection interfaces for quarantine/exhaustion before beginning authentication.
 
 ## Working cadence
 

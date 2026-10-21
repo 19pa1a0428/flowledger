@@ -1,4 +1,5 @@
 import os
+import json
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
@@ -7,7 +8,8 @@ import fakeredis
 from redis import Redis
 from redis.exceptions import ResponseError
 
-from flowledger.claims import RedisClaimQueue, RetryPolicy
+from flowledger.claims import (MalformedCommandQuarantined, RedisClaimQueue,
+                               RetryPolicy)
 from flowledger.jobs import RedisSubmissionQueue, WorkerCommand
 
 
@@ -203,6 +205,38 @@ class ClaimTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.queue.promote_due(value)
 
+    def test_malformed_payload_is_quarantined_atomically(self):
+        payloads = [b'not-json', b'{"schema_version":2}', b'{}']
+        self.client.rpush('flowledger:{jobs}:pending', *payloads)
+        for payload in payloads:
+            with self.assertRaises(MalformedCommandQuarantined):
+                self.queue.claim()
+            record = json.loads(self.client.lindex('flowledger:{jobs}:quarantine', -1))
+            self.assertEqual(record['payload'].encode(), payload)
+            self.assertEqual(record['reason'], 'malformed_command')
+            self.assertIsInstance(record['quarantined_at_ms'], int)
+        self.assertEqual(self.client.hlen('flowledger:{jobs}:claims'), 0)
+        self.assertEqual(self.client.zcard('flowledger:{jobs}:deadlines'), 0)
+        self.assertEqual(self.queue.recover_expired(), 0)
+
+    def test_quarantine_failure_preserves_claim(self):
+        self.client.rpush('flowledger:{jobs}:pending', 'not-json')
+        self.client.set('flowledger:{jobs}:quarantine', 'bad')
+        with self.assertRaises(ResponseError):
+            self.queue.claim()
+        # Key types are validated before LPOP, so delivery remains pending.
+        self.assertEqual(self.client.llen('flowledger:{jobs}:pending'), 1)
+        self.assertEqual(self.client.hlen('flowledger:{jobs}:claims'), 0)
+        self.assertEqual(self.client.zcard('flowledger:{jobs}:deadlines'), 0)
+
+    def test_quarantine_rejects_stale_token_and_bad_reason(self):
+        self.submit()
+        claim = self.queue.claim()
+        with self.assertRaises(ValueError):
+            self.queue.quarantine(claim.token, 'unknown')
+        self.assertTrue(self.queue.acknowledge(claim.token))
+        self.assertFalse(self.queue.quarantine(claim.token, 'command_id_conflict'))
+
 
 @unittest.skipUnless(os.getenv('FLOWLEDGER_TEST_REDIS_URL'), 'Live Redis URL not configured')
 class LiveClaimTests(ClaimTests):
@@ -212,7 +246,7 @@ class LiveClaimTests(ClaimTests):
         self.client.ping()
         self.keys = ['flowledger:{jobs}:' + suffix for suffix in
                      ['pending', 'receipts', 'claims', 'deadlines', 'failures',
-                      'delayed', 'exhausted']]
+                      'delayed', 'exhausted', 'quarantine']]
         if self.client.exists(*self.keys):
             self.fail('Live tests require empty FlowLedger keys in a disposable database')
         self.addCleanup(self.client.close)

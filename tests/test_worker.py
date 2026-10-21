@@ -214,3 +214,39 @@ class WorkerTests(unittest.TestCase):
         claims.promote_due()
         self.assertTrue(run_once(claims, self.repo))
         self.assertEqual(len(self.repo.get(command.workflow_id).events), 2)
+
+    def test_worker_quarantines_malformed_payload_and_continues(self):
+        self.redis.rpush("flowledger:{jobs}:pending", "not-json")
+        command = self.stage()
+        self.queue.submit(command)
+        claims = RedisClaimQueue(self.redis)
+        self.assertTrue(run_once(claims, self.repo))
+        self.assertEqual(self.redis.llen("flowledger:{jobs}:quarantine"), 1)
+        self.assertTrue(run_once(claims, self.repo))
+        self.assertEqual(self.repo.get(command.workflow_id).version, 1)
+
+    def test_worker_quarantines_changed_payload_command_id_conflict(self):
+        command = self.stage()
+        self.assertTrue(self.repo.execute(command))
+        conflict = command.model_copy(update={"expected_version": 1})
+        # Bypass submission receipts to model retained/corrupt queue input.
+        self.redis.rpush("flowledger:{jobs}:pending", conflict.model_dump_json())
+        claims = RedisClaimQueue(self.redis)
+        self.assertTrue(run_once(claims, self.repo))
+        record = self.redis.lindex("flowledger:{jobs}:quarantine", 0)
+        self.assertIn(b'command_id_conflict', record)
+        self.assertIn(str(command.command_id).encode(), record)
+        self.assertEqual(self.redis.hlen("flowledger:{jobs}:claims"), 0)
+        self.assertEqual(len(self.repo.get(command.workflow_id).events), 2)
+
+    def test_conflict_quarantine_outage_leaves_claim_recoverable(self):
+        command = self.stage()
+        self.assertTrue(self.repo.execute(command))
+        conflict = command.model_copy(update={"expected_version": 1})
+        self.redis.rpush("flowledger:{jobs}:pending", conflict.model_dump_json())
+        claims = RedisClaimQueue(self.redis)
+        with patch.object(claims, "quarantine", side_effect=ConnectionError):
+            with self.assertRaises(ConnectionError):
+                run_once(claims, self.repo)
+        self.assertEqual(self.redis.hlen("flowledger:{jobs}:claims"), 1)
+        self.assertEqual(self.redis.llen("flowledger:{jobs}:quarantine"), 0)
