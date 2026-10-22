@@ -1,5 +1,48 @@
 # Learning journal
 
+## 2026-10-21 — Bounded worker supervision and graceful shutdown
+
+Assistance: AI-assisted loop design, deterministic tests, and documentation.
+
+Added `run_loop`, a supervisor-friendly library boundary around the existing single-poll
+worker. Each cycle first recovers expired claims and promotes due retries in bounded
+batches, then handles at most a configured number of commands. A full work batch starts
+a new maintenance cycle immediately, while an idle queue waits on an Event-compatible
+stop signal instead of busy-spinning. Batch, lease, and wait settings reject invalid or
+unbounded values.
+
+Shutdown is cooperative: the loop checks the signal between claims, so a request during
+execution lets the current database transaction and queue acknowledgement finish but does
+not claim another command. Unexpected database, Redis, and programming errors still
+propagate. That makes failure visible to an external process supervisor rather than
+silently retrying unknown failures inside this loop.
+
+Validation: Python 3.12 ran 85 tests locally: 68 passed and 17 live Redis contract tests
+were explicitly skipped because no Redis URL was configured. Four new deterministic tests
+cover idle maintenance and interruptible waiting, work-batch fairness, shutdown after an
+in-flight acknowledgement, and configuration bounds. Existing migration, API, repository,
+queue, outbox, and worker tests also passed. No live Redis or PostgreSQL result is claimed.
+
+Limits: this is a library loop, not a CLI or operating-system signal handler. The embedding
+process must own the Event, signal registration, dependency construction, and restart
+policy. There is still no lease renewal, scheduled outbox relay, or supported interface for
+inspecting quarantined and exhausted payloads.
+
+Exercise: configure `work_batch_size=2`, enqueue five synthetic commands, and instrument
+`recover_expired` to count calls. Run the loop until the queue is idle and confirm
+maintenance runs at least three times, then set the stop Event and verify the idle wait
+returns promptly.
+
+Interview question: Why should a worker check for shutdown between claims instead of
+interrupting the current database operation?
+
+Answer outline: interruption inside a transaction can leave its outcome uncertain, and
+stopping before acknowledgement causes deliberate redelivery. Finishing the bounded
+unit of work preserves commit-before-ack ordering; checking before the next claim limits
+shutdown latency to one command. Idempotent receipts still protect ambiguous redelivery.
+
+Next: add bounded, read-only inspection interfaces for quarantined and exhausted payloads.
+
 ## 2026-10-20 — Poison-command quarantine
 
 Assistance: AI-assisted Redis quarantine design, worker handling, tests and docs.
@@ -362,6 +405,5 @@ worker's claim. A per-delivery token fences queue acknowledgement; duplicate-saf
 database effects still need a separate transaction/idempotency design.
 
 Next: transactional outbox delivery, followed by bounded retries and duplicate-safe execution.
-
 
 

@@ -37,8 +37,9 @@ will produce a finished feature. Work progresses only when the preceding increme
     and exhaustion storage for reported database errors and recovered lease expiry.
     Malformed envelopes and changed-payload command-ID conflicts are atomically
     quarantined with original payload, reason and Redis-server time.
-12. NEXT: Add a supervised bounded worker/maintenance loop, graceful shutdown and
-    inspection interfaces for quarantine/exhaustion before beginning authentication.
+12. IN PROGRESS: Added a supervised bounded worker/maintenance loop with graceful
+    shutdown, maintenance fairness, bounded batches and deterministic tests. NEXT:
+    add inspection interfaces for quarantine/exhaustion before authentication.
 
 ## Working cadence
 

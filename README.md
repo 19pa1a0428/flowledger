@@ -224,8 +224,32 @@ failure count and removes the active claim, returning `scheduled`, `exhausted`, 
 `stale`. Stale/expired tokens cannot consume another owner's budget. Recovery applies
 the same policy to expired claims. Call `recover_expired()` and `promote_due()`
 periodically, even when `run_once()` returns False; batches are limited to 1000.
-No internal timer or supervised loop exists yet. Successful acknowledgement clears
-the payload's failure counter. No sleeping worker or in-memory timer owns a retry.
+`flowledger.worker.run_loop` provides the supervised loop. Every cycle runs bounded
+expired-claim recovery and due promotion before handling at most one configured batch.
+When the queue becomes idle it waits on a `threading.Event`-compatible stop signal, so
+shutdown interrupts the wait without busy-spinning. A stop requested during execution
+is honored after the current database effect and acknowledgement finish; the loop does
+not abandon an in-flight transaction. Queue/Redis and unexpected repository errors
+propagate for an external process supervisor to observe and restart.
+
+```python
+from threading import Event
+from flowledger.worker import WorkerLoopConfig, run_loop
+
+stop = Event()
+stats = run_loop(claims, repository, stop, WorkerLoopConfig(
+    work_batch_size=100,
+    maintenance_batch_size=100,
+    lease_ms=30_000,
+    idle_wait_seconds=1.0,
+))
+```
+
+The embedding process owns signal registration and calls `stop.set()` during shutdown.
+There is no command-line worker entry point, lease renewal, automatic process restart,
+or outbox relay scheduling yet. `WorkerLoopStats` reports completed loop activity when
+shutdown is graceful. Successful acknowledgement clears the payload's failure counter;
+no sleeping worker or in-memory timer owns a retry deadline.
 
 Delayed payloads and counters survive client restart only while Redis state survives.
 Use persistence and no eviction; Lua resource failures can still leave partial writes.
