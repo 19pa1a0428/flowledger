@@ -8,8 +8,9 @@ import fakeredis
 from redis import Redis
 from redis.exceptions import ResponseError
 
-from flowledger.claims import (MalformedCommandQuarantined, RedisClaimQueue,
-                               RetryPolicy)
+from flowledger.claims import (ExhaustedCommand, InspectionDataError,
+                               MalformedCommandQuarantined, QuarantinedCommand,
+                               RedisClaimQueue, RetryPolicy)
 from flowledger.jobs import RedisSubmissionQueue, WorkerCommand
 
 
@@ -236,6 +237,56 @@ class ClaimTests(unittest.TestCase):
             self.queue.quarantine(claim.token, 'unknown')
         self.assertTrue(self.queue.acknowledge(claim.token))
         self.assertFalse(self.queue.quarantine(claim.token, 'command_id_conflict'))
+
+    def test_quarantine_inspection_is_bounded_ordered_and_read_only(self):
+        payloads = ['not-json', '{"schema_version":2}', '{}']
+        self.client.rpush('flowledger:{jobs}:pending', *payloads)
+        for _ in payloads:
+            with self.assertRaises(MalformedCommandQuarantined):
+                self.queue.claim()
+
+        page = self.queue.list_quarantined(offset=1, limit=2)
+
+        self.assertEqual([item.payload for item in page], payloads[1:])
+        self.assertTrue(all(isinstance(item, QuarantinedCommand) for item in page))
+        self.assertTrue(all(item.reason == 'malformed_command' for item in page))
+        self.assertEqual(self.client.llen('flowledger:{jobs}:quarantine'), 3)
+        self.assertEqual(self.queue.list_quarantined(offset=3), [])
+
+    def test_exhaustion_inspection_survives_new_queue_client(self):
+        self.queue = RedisClaimQueue(self.client, RetryPolicy(max_failures=1))
+        self.submit()
+        self.assertEqual(self.queue.retry(self.queue.claim().token), 'exhausted')
+
+        restarted = RedisClaimQueue(self.client, RetryPolicy(max_failures=1))
+        self.assertEqual(restarted.list_exhausted(), [
+            ExhaustedCommand(self.command.model_dump_json(), 1)
+        ])
+        self.assertEqual(self.client.llen('flowledger:{jobs}:exhausted'), 1)
+        self.assertEqual(restarted.list_exhausted(offset=1), [])
+
+    def test_inspection_reports_corrupt_retained_data_without_removing_it(self):
+        self.client.rpush('flowledger:{jobs}:quarantine', 'not-json')
+        with self.assertRaises(InspectionDataError):
+            self.queue.list_quarantined()
+        self.assertEqual(self.client.llen('flowledger:{jobs}:quarantine'), 1)
+
+        payload = self.command.model_dump_json()
+        self.client.rpush('flowledger:{jobs}:exhausted', payload)
+        self.client.hset('flowledger:{jobs}:failures', payload, 'bad')
+        with self.assertRaises(InspectionDataError):
+            self.queue.list_exhausted()
+        self.assertEqual(self.client.llen('flowledger:{jobs}:exhausted'), 1)
+
+    def test_inspection_page_validation(self):
+        for value in (-1, True, 1.5, 2**40):
+            with self.subTest(offset=value):
+                with self.assertRaises(ValueError):
+                    self.queue.list_quarantined(offset=value)
+        for value in (0, True, 1001, 1.5):
+            with self.subTest(limit=value):
+                with self.assertRaises(ValueError):
+                    self.queue.list_exhausted(limit=value)
 
 
 @unittest.skipUnless(os.getenv('FLOWLEDGER_TEST_REDIS_URL'), 'Live Redis URL not configured')

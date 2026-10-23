@@ -1,5 +1,6 @@
 """At-least-once queue claims; this module does not execute workflow effects."""
 from dataclasses import dataclass
+import json
 from uuid import uuid4
 
 from redis import Redis
@@ -26,6 +27,10 @@ class RetryPolicy:
 
 class MalformedCommandQuarantined(ValueError):
     """The claimed payload was retained in quarantine instead of redelivered."""
+
+
+class InspectionDataError(ValueError):
+    """Retained operational data does not match the inspection contract."""
 
 
 # Validate every key before mutation. Redis script errors are not rollbacks.
@@ -135,9 +140,23 @@ class Claim:
     command: WorkerCommand
 
 
+@dataclass(frozen=True)
+class QuarantinedCommand:
+    payload: str
+    reason: str
+    quarantined_at_ms: int
+
+
+@dataclass(frozen=True)
+class ExhaustedCommand:
+    payload: str
+    failure_count: int
+
+
 class RedisClaimQueue:
     def __init__(self, client: Redis, retry_policy: RetryPolicy | None = None):
         self.retry_policy = retry_policy if retry_policy is not None else RetryPolicy()
+        self._client = client
         self._claim = client.register_script(_CLAIM)
         self._ack = client.register_script(_ACK)
         self._recover = client.register_script(_RECOVER)
@@ -191,6 +210,65 @@ class RedisClaimQueue:
         if reason not in {"malformed_command", "command_id_conflict"}:
             raise ValueError("Unsupported quarantine reason")
         return bool(self._quarantine(keys=_KEYS, args=[token, reason]))
+
+    def list_quarantined(self, offset: int = 0,
+                         limit: int = 100) -> list[QuarantinedCommand]:
+        """Read an oldest-first bounded page without changing delivery state."""
+        self._page(offset, limit)
+        records = self._client.lrange(_KEYS[6], offset, offset + limit - 1)
+        result = []
+        for raw in records:
+            try:
+                record = json.loads(self._text(raw))
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise InspectionDataError("Invalid quarantine record encoding") from error
+            if (not isinstance(record, dict)
+                    or type(record.get("payload")) is not str
+                    or type(record.get("reason")) is not str
+                    or record["reason"] not in {"malformed_command", "command_id_conflict"}
+                    or type(record.get("quarantined_at_ms")) is not int
+                    or record["quarantined_at_ms"] < 0):
+                raise InspectionDataError("Invalid quarantine record fields")
+            result.append(QuarantinedCommand(record["payload"], record["reason"],
+                                              record["quarantined_at_ms"]))
+        return result
+
+    def list_exhausted(self, offset: int = 0,
+                       limit: int = 100) -> list[ExhaustedCommand]:
+        """Read an oldest-first bounded page with its retained failure counts."""
+        self._page(offset, limit)
+        payloads = self._client.lrange(_KEYS[5], offset, offset + limit - 1)
+        if not payloads:
+            return []
+        counters = self._client.hmget(_KEYS[3], payloads)
+        result = []
+        for raw_payload, raw_count in zip(payloads, counters, strict=True):
+            try:
+                count = int(self._text(raw_count))
+            except (TypeError, UnicodeDecodeError, ValueError) as error:
+                raise InspectionDataError("Invalid exhausted failure count") from error
+            if not 1 <= count <= 100:
+                raise InspectionDataError("Invalid exhausted failure count")
+            try:
+                payload = self._text(raw_payload)
+            except UnicodeDecodeError as error:
+                raise InspectionDataError("Invalid exhausted payload encoding") from error
+            result.append(ExhaustedCommand(payload, count))
+        return result
+
+    @classmethod
+    def _page(cls, offset: int, limit: int) -> None:
+        if type(offset) is not int or not 0 <= offset <= 2_147_483_647:
+            raise ValueError("Offset must be a nonnegative 32-bit integer")
+        cls._batch_size(limit)
+
+    @staticmethod
+    def _text(value: bytes | str | None) -> str:
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        if isinstance(value, str):
+            return value
+        raise TypeError("Expected Redis text data")
 
     @staticmethod
     def _batch_size(limit: int) -> None:

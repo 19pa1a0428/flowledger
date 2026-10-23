@@ -1,5 +1,46 @@
 # Learning journal
 
+## 2026-10-22 — Read-only failure inspection
+
+Assistance: AI-assisted inspection contract design, corruption tests and documentation.
+
+Added bounded, oldest-first library inspection for quarantined and exhausted work.
+Quarantine results expose the original payload, stable reason and Redis-server timestamp;
+exhaustion results pair the raw payload with its retained failure count. Both interfaces
+support offsets and limits without acknowledging, deleting, replaying or otherwise
+changing queue state, and the records remain available through a fresh queue client.
+
+Inspection validates retained data and raises `InspectionDataError` for corrupt JSON,
+fields, text encoding, missing counters or invalid counter values. It intentionally keeps
+the raw envelope rather than requiring today's `WorkerCommand` schema, so operators can
+still investigate records written by another application version. Redis command errors
+continue to propagate rather than being mistaken for an empty page.
+
+Validation: Python 3.12 ran 93 tests locally: 72 passed and 21 live Redis contract tests
+were explicitly skipped because no Redis URL was configured. Four new contract tests,
+also inherited by the live Redis suite, cover bounded ordered quarantine pages, exhausted
+failure counts after client restart, corrupt-data reporting without deletion, and page
+validation. Existing API, migration, repository, outbox, retry, worker and loop tests
+passed. No live Redis or PostgreSQL result is claimed locally.
+
+Limits: list offsets are adequate for append-only operational inspection but are not an
+opaque cursor or a transaction spanning the exhausted list and failure hash. There is no
+authorized HTTP/operator API, replay, deletion, retention policy or archival process.
+
+Exercise: force one synthetic command to exhaust with `RetryPolicy(max_failures=1)`,
+construct a fresh `RedisClaimQueue`, call `list_exhausted()`, and verify both the original
+JSON payload and failure count remain while the exhausted list length is unchanged.
+
+Interview question: Why should an inspection interface return the raw retained payload
+instead of only parsing it into the current command model?
+
+Answer outline: poison records and older schema versions may not validate under current
+code, but they are exactly the evidence an operator needs. Returning validated metadata
+alongside the raw envelope preserves inspectability; replay should be a separate,
+authorized workflow that creates new intent rather than silently mutating evidence.
+
+Next: introduce authenticated principals and role-based API checks with negative tests.
+
 ## 2026-10-21 — Bounded worker supervision and graceful shutdown
 
 Assistance: AI-assisted loop design, deterministic tests, and documentation.

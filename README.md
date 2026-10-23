@@ -254,7 +254,8 @@ no sleeping worker or in-memory timer owns a retry deadline.
 Delayed payloads and counters survive client restart only while Redis state survives.
 Use persistence and no eviction; Lua resource failures can still leave partial writes.
 Exhausted payloads and their counters are retained indefinitely for inspection, not
-automatically replayed. There is no inspection/replay API or retention cleanup yet.
+automatically replayed. `list_exhausted(offset=0, limit=100)` returns an oldest-first,
+bounded page with each raw payload and retained failure count.
 Inspect `command_receipts` before manually creating new intent: an expired claim or
 ambiguous commit response can exhaust the queue budget even if its database effect
 already committed. Exhaustion is a delivery outcome, not proof that the workflow
@@ -278,10 +279,29 @@ Quarantine is token-fenced and atomic: only the active, unexpired owner can remo
 claim and append its record. Stale tokens cannot quarantine newer ownership. Key
 types are checked before claiming, so a broken quarantine key leaves input pending;
 an outage after claim keeps it recoverable. Quarantine clears the payload's retry
-counter and is terminal—there is no automatic replay, API, retention cleanup or
-operator UI yet. Correct the cause and submit a new command ID rather than editing
+counter and is terminal. `list_quarantined(offset=0, limit=100)` returns an
+oldest-first page containing raw payload, stable reason and quarantine timestamp.
+Correct the cause and submit a new command ID rather than editing
 retained Redis data. Quarantine depends on the same Redis persistence/no-eviction
 assumptions as the queue and is not an audit substitute for database receipts.
+
+## Failure inspection
+
+```python
+for item in worker_queue.list_quarantined(limit=50):
+    print(item.reason, item.quarantined_at_ms, item.payload)
+
+for item in worker_queue.list_exhausted(limit=50):
+    print(item.failure_count, item.payload)
+```
+
+Inspection is read-only and limited to 1–1000 records per call. It does not acknowledge,
+requeue, delete, or reinterpret payloads, and works after constructing a fresh queue
+client because Redis owns the retained state. Invalid JSON, fields, encoding, or failure
+counters raise `InspectionDataError` while leaving evidence untouched. Pages use list
+offsets rather than opaque cursors; concurrent appends are safe for an oldest-first page,
+but no cross-key snapshot is claimed. There is no HTTP/operator API, replay workflow,
+authorization layer, or retention cleanup yet.
 
 FastAPI, PostgreSQL, SQLAlchemy/Alembic, a Redis-backed worker, React/TypeScript,
 Docker, GitHub Actions, and OpenTelemetry. Start as a modular application with a
