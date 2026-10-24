@@ -41,8 +41,11 @@ will produce a finished feature. Work progresses only when the preceding increme
     maintenance fairness and bounded batches. Read-only, paginated inspection exposes
     quarantined payloads and exhausted payloads with failure counts, including explicit
     corrupt-data handling; replay and deletion remain deliberately unsupported.
-13. NEXT: Begin security with an authenticated principal boundary, role checks and
-    negative API contract tests before adding ownership enforcement.
+13. DONE: Opaque bearer authentication with fail-closed configuration, constant-time
+    digest comparison, viewer/operator route authorization and negative API tests for
+    missing, invalid and insufficient credentials.
+14. NEXT: Persist workflow ownership and enforce owner-or-operator access with negative
+    cross-principal tests and an auditable principal on new events.
 
 ## Working cadence
 

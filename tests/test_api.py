@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from flowledger.api import create_app
+from flowledger.auth import Principal, Role, TokenAuthenticator
 from flowledger.database import Base
 from flowledger.repository import SqlAlchemyRepository, build_session_factory
 from sqlalchemy import create_engine
@@ -10,13 +11,23 @@ from sqlalchemy.pool import StaticPool
 
 
 class ApiTests(unittest.TestCase):
+    operator_token = 'operator-test-token-000000000000000'
+    viewer_token = 'viewer-test-token-00000000000000000'
+
     def setUp(self):
         engine = create_engine(
             "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
         )
         Base.metadata.create_all(engine)
         self.repository = SqlAlchemyRepository(build_session_factory(engine))
-        self.client = TestClient(create_app(self.repository))
+        self.authenticator = TokenAuthenticator({
+            self.operator_token: Principal('synthetic-operator', Role.OPERATOR),
+            self.viewer_token: Principal('synthetic-viewer', Role.VIEWER),
+        })
+        self.app = create_app(self.repository, self.authenticator)
+        self.client = TestClient(self.app, headers={
+            'Authorization': f'Bearer {self.operator_token}'
+        })
         self.addCleanup(self.client.close)
 
     def create(self, **kwargs):
@@ -105,5 +116,29 @@ class ApiTests(unittest.TestCase):
 
     def test_application_instances_share_durable_storage(self):
         path = self.create().headers['Location']
-        with TestClient(create_app(self.repository)) as other:
+        with TestClient(create_app(self.repository, self.authenticator), headers={
+            'Authorization': f'Bearer {self.operator_token}'
+        }) as other:
             self.assertEqual(other.get(path).status_code, 200)
+
+    def test_authentication_and_role_contract(self):
+        path = self.create().headers['Location']
+        with TestClient(self.app) as anonymous:
+            for headers in ({}, {'Authorization': 'Bearer invalid-token-value-000000000000'}):
+                with self.subTest(headers=headers):
+                    response = anonymous.get(path, headers=headers)
+                    self.assertEqual(response.status_code, 401)
+                    self.assertEqual(response.headers['www-authenticate'], 'Bearer')
+                    self.assertEqual(response.json()['detail'], 'Not authenticated')
+
+        viewer_headers = {'Authorization': f'Bearer {self.viewer_token}'}
+        with TestClient(self.app, headers=viewer_headers) as viewer:
+            self.assertEqual(viewer.get(path).status_code, 200)
+            response = viewer.post('/workflows', json={'name': 'forbidden'})
+            self.assertEqual((response.status_code, response.json()['detail']),
+                             (403, 'Operator role required'))
+            response = viewer.post(path + '/transitions',
+                                   json={'status': 'running', 'expected_version': 0})
+            self.assertEqual((response.status_code, response.json()['detail']),
+                             (403, 'Operator role required'))
+        self.assertEqual(self.client.get(path).json()['version'], 0)

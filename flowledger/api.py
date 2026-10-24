@@ -3,10 +3,12 @@ from datetime import datetime
 import os
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import create_engine
 
+from flowledger.auth import Principal, Role, TokenAuthenticator
 from flowledger.domain import InvalidTransition, Status, Workflow
 from flowledger.repository import ConcurrencyConflict, SqlAlchemyRepository, build_session_factory
 
@@ -49,8 +51,12 @@ class WorkflowResponse(BaseModel):
     events: list[EventResponse]
 
 
-def create_app(repository: SqlAlchemyRepository | None = None) -> FastAPI:
+def create_app(repository: SqlAlchemyRepository | None = None,
+               authenticator: TokenAuthenticator | None = None) -> FastAPI:
     app = FastAPI(title="FlowLedger", version="0.4.0")
+    authenticator = authenticator or TokenAuthenticator.from_json(
+        os.getenv("FLOWLEDGER_AUTH_TOKENS")
+    )
     if repository is None:
         database_url = os.getenv(
             "FLOWLEDGER_DATABASE_URL",
@@ -58,20 +64,40 @@ def create_app(repository: SqlAlchemyRepository | None = None) -> FastAPI:
         )
         repository = SqlAlchemyRepository(build_session_factory(create_engine(database_url)))
 
-    @app.post("/workflows", status_code=201, response_model=WorkflowResponse)
+    bearer = HTTPBearer(auto_error=False)
+
+    def current_principal(
+        credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    ) -> Principal:
+        principal = (authenticator.authenticate(credentials.credentials)
+                     if credentials is not None else None)
+        if principal is None:
+            raise HTTPException(401, "Not authenticated",
+                                headers={"WWW-Authenticate": "Bearer"})
+        return principal
+
+    def require_operator(principal: Principal = Depends(current_principal)) -> Principal:
+        if principal.role is not Role.OPERATOR:
+            raise HTTPException(403, "Operator role required")
+        return principal
+
+    @app.post("/workflows", status_code=201, response_model=WorkflowResponse,
+              dependencies=[Depends(require_operator)])
     def create_workflow(body: CreateWorkflow, response: Response):
         workflow = repository.add(Workflow.create(body.name, body.max_attempts))
         response.headers["Location"] = f"/workflows/{workflow.id}"
         return workflow
 
-    @app.get("/workflows/{workflow_id}", response_model=WorkflowResponse)
+    @app.get("/workflows/{workflow_id}", response_model=WorkflowResponse,
+             dependencies=[Depends(current_principal)])
     def get_workflow(workflow_id: UUID):
         try:
             return repository.get(workflow_id)
         except KeyError:
             raise HTTPException(404, "Workflow not found") from None
 
-    @app.post("/workflows/{workflow_id}/transitions", response_model=WorkflowResponse)
+    @app.post("/workflows/{workflow_id}/transitions", response_model=WorkflowResponse,
+              dependencies=[Depends(require_operator)])
     def transition_workflow(workflow_id: UUID, body: TransitionWorkflow):
         try:
             return repository.transition(workflow_id, body.status, body.expected_version)

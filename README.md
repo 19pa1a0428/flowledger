@@ -63,6 +63,31 @@ status and retry invariants from writes that bypass the application.
 
 See [the roadmap](docs/ROADMAP.md) and [the learning journal](docs/LEARNING.md).
 
+## Authentication and roles
+
+Every workflow route requires an opaque bearer token. Operators may create, read and
+transition workflows; viewers may only read. Configure credentials as a JSON list in
+`FLOWLEDGER_AUTH_TOKENS`. Missing configuration is fail-closed: the application starts
+but every protected request returns `401`.
+
+```bash
+export FLOWLEDGER_AUTH_TOKENS='[
+  {"token":"replace-with-a-random-secret-of-at-least-32-characters","subject":"local-operator","role":"operator"}
+]'
+```
+
+| Route | Viewer | Operator |
+| --- | --- | --- |
+| `POST /workflows` | 403 | Allowed |
+| `GET /workflows/{id}` | Allowed | Allowed |
+| `POST /workflows/{id}/transitions` | 403 | Allowed |
+
+Tokens must contain 32–4096 characters. FlowLedger stores only SHA-256 digests in the
+authenticator and uses constant-time digest comparison, but the source environment still
+contains the raw secrets. Generate strong random values with a secret manager, use TLS,
+avoid committing or logging them, and restart after rotation. This first boundary has no
+login, token issuance, expiry, revocation, persisted users or ownership enforcement.
+
 ## Try the API
 
 ```bash
@@ -72,6 +97,7 @@ uvicorn flowledger.api:app --reload --host 127.0.0.1
 
 Open http://127.0.0.1:8000/docs. The current routes are `POST /workflows`,
 `GET /workflows/{id}`, and `POST /workflows/{id}/transitions`.
+Use the OpenAPI **Authorize** control or send `Authorization: Bearer <token>`.
 The transition body is shaped like
 `{"status": "running", "expected_version": 0}`. After a successful transition, use
 the returned `version` for the next request; on `409`, fetch the latest workflow before

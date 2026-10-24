@@ -1,5 +1,47 @@
 # Learning journal
 
+## 2026-10-23 — Authenticated principals and role checks
+
+Assistance: AI-assisted security boundary design, negative contract tests and documentation.
+
+Added opaque bearer-token authentication around every workflow route. Configured secrets
+map to a stable subject and either a viewer or operator role. Only token digests are retained
+by the authenticator, every configured digest is compared for a request, and missing token
+configuration fails closed. Operators can create, read and transition workflows; viewers
+can read but receive `403` before mutation code runs.
+
+The application factory accepts an injected authenticator for isolated tests and otherwise
+parses `FLOWLEDGER_AUTH_TOKENS`. Configuration rejects short tokens, invalid roles, padded or
+empty subjects, extra fields and malformed JSON. HTTP failures distinguish unauthenticated
+requests (`401` with a Bearer challenge) from authenticated principals lacking permission
+(`403`). A negative API test confirms denied viewer transitions leave the version unchanged.
+
+Validation: Python 3.12 ran 97 tests locally: 76 passed and 21 live Redis contract tests
+were explicitly skipped because no Redis URL was configured. Four new tests cover exact
+token matching, fail-closed/configuration validation, missing and invalid credentials,
+viewer reads, denied viewer writes and unchanged state. Existing workflow, persistence,
+migration, outbox, Redis reliability, inspection and worker-loop tests passed. No live
+PostgreSQL or Redis result is claimed locally.
+
+Limits: this is pre-provisioned opaque-token authentication, not an identity provider.
+Raw tokens still exist in the source environment and require TLS, secret management and
+restart-based rotation. There is no login, issuance, expiry, revocation, persisted user,
+per-workflow ownership or actor field in audit events yet.
+
+Exercise: configure one viewer and one operator with synthetic 32-character tokens. Create
+a workflow as the operator, read it as the viewer, then attempt a viewer transition and
+confirm the response is `403` while a subsequent operator read still shows version zero.
+
+Interview question: Why should an API return `401` for an invalid token but `403` for an
+authenticated viewer attempting an operator action?
+
+Answer outline: `401` means the server cannot establish an identity and includes an
+authentication challenge. `403` means identity is established but policy denies the
+operation. Keeping those cases distinct makes client behavior and security auditing clear
+without revealing whether a protected resource exists.
+
+Next: persist workflow ownership and enforce owner-or-operator access with actor-aware audit.
+
 ## 2026-10-22 — Read-only failure inspection
 
 Assistance: AI-assisted inspection contract design, corruption tests and documentation.
