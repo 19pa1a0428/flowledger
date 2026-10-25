@@ -38,12 +38,14 @@ class EventResponse(BaseModel):
     status: Status
     occurred_at: datetime
     attempt: int
+    actor_id: str
 
 
 class WorkflowResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     name: str
+    owner_id: str
     status: Status
     attempts: int
     max_attempts: int
@@ -81,26 +83,33 @@ def create_app(repository: SqlAlchemyRepository | None = None,
             raise HTTPException(403, "Operator role required")
         return principal
 
-    @app.post("/workflows", status_code=201, response_model=WorkflowResponse,
-              dependencies=[Depends(require_operator)])
-    def create_workflow(body: CreateWorkflow, response: Response):
-        workflow = repository.add(Workflow.create(body.name, body.max_attempts))
+    @app.post("/workflows", status_code=201, response_model=WorkflowResponse)
+    def create_workflow(body: CreateWorkflow, response: Response,
+                        principal: Principal = Depends(require_operator)):
+        workflow = repository.add(Workflow.create(
+            body.name, body.max_attempts, owner_id=principal.subject,
+            actor_id=principal.subject,
+        ))
         response.headers["Location"] = f"/workflows/{workflow.id}"
         return workflow
 
-    @app.get("/workflows/{workflow_id}", response_model=WorkflowResponse,
-             dependencies=[Depends(current_principal)])
-    def get_workflow(workflow_id: UUID):
+    @app.get("/workflows/{workflow_id}", response_model=WorkflowResponse)
+    def get_workflow(workflow_id: UUID,
+                     principal: Principal = Depends(current_principal)):
         try:
-            return repository.get(workflow_id)
+            workflow = repository.get(workflow_id)
         except KeyError:
             raise HTTPException(404, "Workflow not found") from None
+        if principal.role is not Role.OPERATOR and workflow.owner_id != principal.subject:
+            raise HTTPException(404, "Workflow not found")
+        return workflow
 
-    @app.post("/workflows/{workflow_id}/transitions", response_model=WorkflowResponse,
-              dependencies=[Depends(require_operator)])
-    def transition_workflow(workflow_id: UUID, body: TransitionWorkflow):
+    @app.post("/workflows/{workflow_id}/transitions", response_model=WorkflowResponse)
+    def transition_workflow(workflow_id: UUID, body: TransitionWorkflow,
+                            principal: Principal = Depends(require_operator)):
         try:
-            return repository.transition(workflow_id, body.status, body.expected_version)
+            return repository.transition(workflow_id, body.status, body.expected_version,
+                                         actor_id=principal.subject)
         except KeyError:
             raise HTTPException(404, "Workflow not found") from None
         except InvalidTransition as error:

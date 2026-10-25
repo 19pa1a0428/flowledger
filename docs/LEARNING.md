@@ -1,5 +1,51 @@
 # Learning journal
 
+## 2026-10-24 — Workflow ownership and actor-aware audit
+
+Assistance: AI-assisted ownership model, migration, access-control tests and documentation.
+
+Persisted an immutable owner subject on every workflow and an actor subject on every audit
+event. API creation assigns the authenticated operator as both owner and initial actor;
+subsequent API transitions record the operator, while database worker execution records
+the explicit `worker` actor. Domain and database constraints reject blank, padded or
+overlong identities.
+
+Owner viewers can read their workflow, but a different viewer receives the same `404` as
+an unknown ID to reduce resource enumeration. Operators retain cross-workflow read and
+transition access for operational support. The negative API contract proves an outsider
+cannot read the workflow, while another operator can transition it and appears on the new
+history event. Ownership and actors survive repository restart.
+
+The reversible migration backfills existing workflows and events with `legacy-system`.
+That label is deliberately honest: older rows did not capture identity, so attributing
+them to a person would invent audit evidence. Temporary database defaults support the
+backfill and are removed before new writes.
+
+Validation: Python 3.12 ran 97 tests locally: 76 passed and 21 live Redis contract tests
+were explicitly skipped because no Redis URL was configured. Updated domain, repository,
+migration and API tests cover identity validation, durable owner/actor round trips,
+reversible schema changes, owner reads, non-owner denial, operator override and actor
+attribution. Existing outbox, Redis reliability, inspection and worker tests passed.
+PostgreSQL offline SQL generation confirmed identity columns, constraints, legacy
+backfill defaults and default removal. No live PostgreSQL or Redis result is claimed locally.
+
+Limits: operators are intentionally global and ownership cannot yet be reassigned. Static
+opaque credentials still have no expiry or revocation, and there is no administrative
+audit query beyond history returned with an authorized workflow read.
+
+Exercise: create a workflow as operator A, read it using a viewer token with A's subject,
+then try a viewer token for B and confirm it receives `404`. Transition it as operator B
+and verify the newest event's `actor_id` is B while `owner_id` remains A.
+
+Interview question: Why return `404` instead of `403` when an authenticated non-owner asks
+for a workflow by ID?
+
+Answer outline: `403` confirms that the resource exists, enabling identifier enumeration.
+Using the same `404` for missing and unauthorized resources hides that distinction. The
+server must still log the authenticated denial internally so operators can investigate it.
+
+Next: add deterministic credential expiry and revocation semantics.
+
 ## 2026-10-23 — Authenticated principals and role checks
 
 Assistance: AI-assisted security boundary design, negative contract tests and documentation.

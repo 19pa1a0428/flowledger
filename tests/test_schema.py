@@ -20,10 +20,11 @@ class MigrationTests(unittest.TestCase):
         command.upgrade(self.config, "head")
         inspector = inspect(create_engine(self.url))
         self.assertIn("rejection", {c["name"] for c in inspector.get_columns("command_receipts")})
+        self.assertIn("actor_id", {c["name"] for c in inspector.get_columns("workflow_events")})
         self.assertEqual(set(inspector.get_table_names()), {"alembic_version", "workflows", "workflow_events", "command_outbox", "command_receipts"})
         self.assertEqual(
             {column["name"] for column in inspector.get_columns("workflows")},
-            {"id", "name", "status", "attempts", "max_attempts", "version",
+            {"id", "name", "owner_id", "status", "attempts", "max_attempts", "version",
              "created_at", "updated_at"},
         )
         foreign_keys = inspector.get_foreign_keys("workflow_events")
@@ -36,6 +37,8 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("ck_workflows_status", checks)
         self.assertIn("ck_workflows_version_nonnegative", checks)
         self.assertIn("ck_workflow_events_status", checks)
+        self.assertIn("ck_workflows_owner_id", checks)
+        self.assertIn("ck_workflow_events_actor_id", checks)
 
     def test_migration_is_reversible(self):
         command.upgrade(self.config, "head")

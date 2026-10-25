@@ -66,9 +66,9 @@ See [the roadmap](docs/ROADMAP.md) and [the learning journal](docs/LEARNING.md).
 ## Authentication and roles
 
 Every workflow route requires an opaque bearer token. Operators may create, read and
-transition workflows; viewers may only read. Configure credentials as a JSON list in
-`FLOWLEDGER_AUTH_TOKENS`. Missing configuration is fail-closed: the application starts
-but every protected request returns `401`.
+transition any workflow; viewers may only read workflows they own. Configure credentials
+as a JSON list in `FLOWLEDGER_AUTH_TOKENS`. Missing configuration is fail-closed: the
+application starts but every protected request returns `401`.
 
 ```bash
 export FLOWLEDGER_AUTH_TOKENS='[
@@ -79,14 +79,22 @@ export FLOWLEDGER_AUTH_TOKENS='[
 | Route | Viewer | Operator |
 | --- | --- | --- |
 | `POST /workflows` | 403 | Allowed |
-| `GET /workflows/{id}` | Allowed | Allowed |
+| `GET /workflows/{id}` | Owner only | Allowed |
 | `POST /workflows/{id}/transitions` | 403 | Allowed |
 
 Tokens must contain 32–4096 characters. FlowLedger stores only SHA-256 digests in the
 authenticator and uses constant-time digest comparison, but the source environment still
 contains the raw secrets. Generate strong random values with a secret manager, use TLS,
-avoid committing or logging them, and restart after rotation. This first boundary has no
-login, token issuance, expiry, revocation, persisted users or ownership enforcement.
+avoid committing or logging them, and restart after rotation. This boundary has no
+login, token issuance, expiry, revocation, persisted users or ownership reassignment.
+
+New workflows store the creating operator's subject as `owner_id`. Each history event
+stores the subject that caused it as `actor_id`; database-only worker transitions use
+the explicit actor `worker`. A non-owner viewer receives `404`, matching an unknown ID
+so the API does not disclose another principal's workflow. Operators can inspect and
+transition any workflow for operational support, but cannot reassign ownership. The
+ownership migration marks existing snapshots and events as `legacy-system` because their
+historical human actor cannot be reconstructed honestly.
 
 ## Try the API
 

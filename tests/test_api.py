@@ -13,6 +13,8 @@ from sqlalchemy.pool import StaticPool
 class ApiTests(unittest.TestCase):
     operator_token = 'operator-test-token-000000000000000'
     viewer_token = 'viewer-test-token-00000000000000000'
+    outsider_token = 'outsider-test-token-000000000000000'
+    other_operator_token = 'other-operator-token-000000000000000'
 
     def setUp(self):
         engine = create_engine(
@@ -22,7 +24,9 @@ class ApiTests(unittest.TestCase):
         self.repository = SqlAlchemyRepository(build_session_factory(engine))
         self.authenticator = TokenAuthenticator({
             self.operator_token: Principal('synthetic-operator', Role.OPERATOR),
-            self.viewer_token: Principal('synthetic-viewer', Role.VIEWER),
+            self.viewer_token: Principal('synthetic-operator', Role.VIEWER),
+            self.outsider_token: Principal('synthetic-outsider', Role.VIEWER),
+            self.other_operator_token: Principal('other-operator', Role.OPERATOR),
         })
         self.app = create_app(self.repository, self.authenticator)
         self.client = TestClient(self.app, headers={
@@ -48,12 +52,14 @@ class ApiTests(unittest.TestCase):
         workflow = response.json()
         UUID(workflow['id'])
         self.assertEqual(workflow['name'], 'synthetic report')
+        self.assertEqual(workflow['owner_id'], 'synthetic-operator')
         self.assertEqual(workflow['status'], 'pending')
         self.assertEqual(workflow['attempts'], 0)
         self.assertEqual(workflow['max_attempts'], 3)
         self.assertEqual(workflow['version'], 0)
         self.assertEqual(len(workflow['events']), 1)
         self.assertEqual(workflow['events'][0]['attempt'], 0)
+        self.assertEqual(workflow['events'][0]['actor_id'], 'synthetic-operator')
         self.assertTrue(workflow['events'][0]['occurred_at'].endswith('Z'))
         self.assertEqual(self.client.get(response.headers['Location']).json(), workflow)
 
@@ -141,4 +147,19 @@ class ApiTests(unittest.TestCase):
                                    json={'status': 'running', 'expected_version': 0})
             self.assertEqual((response.status_code, response.json()['detail']),
                              (403, 'Operator role required'))
-        self.assertEqual(self.client.get(path).json()['version'], 0)
+
+        with TestClient(self.app, headers={
+            'Authorization': f'Bearer {self.outsider_token}'
+        }) as outsider:
+            response = outsider.get(path)
+            self.assertEqual((response.status_code, response.json()['detail']),
+                             (404, 'Workflow not found'))
+
+        with TestClient(self.app, headers={
+            'Authorization': f'Bearer {self.other_operator_token}'
+        }) as operator:
+            self.assertEqual(operator.get(path).status_code, 200)
+            response = operator.post(path + '/transitions',
+                                     json={'status': 'running', 'expected_version': 0})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['events'][-1]['actor_id'], 'other-operator')

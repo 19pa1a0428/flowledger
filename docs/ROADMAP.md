@@ -44,8 +44,11 @@ will produce a finished feature. Work progresses only when the preceding increme
 13. DONE: Opaque bearer authentication with fail-closed configuration, constant-time
     digest comparison, viewer/operator route authorization and negative API tests for
     missing, invalid and insufficient credentials.
-14. NEXT: Persist workflow ownership and enforce owner-or-operator access with negative
-    cross-principal tests and an auditable principal on new events.
+14. DONE: Persist workflow ownership and event actors. Owner viewers can read their
+    workflows, non-owner viewers receive non-enumerating 404 responses, operators retain
+    cross-workflow access, and worker/API transitions have explicit audited actors.
+15. NEXT: Add credential expiry and revocation semantics with deterministic clock tests
+    before exposing administrative audit queries.
 
 ## Working cadence
 

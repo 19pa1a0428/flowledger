@@ -6,15 +6,18 @@ from flowledger.domain import InvalidTransition, Status, Workflow
 
 class WorkflowTests(unittest.TestCase):
     def test_success_keeps_original_snapshot_and_audit_history(self):
-        pending = Workflow.create("  synthetic report  ")
-        running = pending.transition(Status.RUNNING)
-        done = running.transition(Status.SUCCEEDED)
+        pending = Workflow.create("  synthetic report  ", owner_id="synthetic-owner")
+        running = pending.transition(Status.RUNNING, actor_id="synthetic-worker")
+        done = running.transition(Status.SUCCEEDED, actor_id="synthetic-operator")
         self.assertEqual(pending.status, Status.PENDING)
         self.assertEqual(done.name, "synthetic report")
+        self.assertEqual(done.owner_id, "synthetic-owner")
         self.assertEqual(done.attempts, 1)
         self.assertEqual((pending.version, running.version, done.version), (0, 1, 2))
         self.assertEqual([e.status for e in done.events],
                          [Status.PENDING, Status.RUNNING, Status.SUCCEEDED])
+        self.assertEqual([e.actor_id for e in done.events],
+                         ["synthetic-owner", "synthetic-worker", "synthetic-operator"])
         self.assertTrue(all(e.occurred_at.utcoffset().total_seconds() == 0
                             for e in done.events))
         with self.assertRaises(FrozenInstanceError):
@@ -64,6 +67,11 @@ class WorkflowTests(unittest.TestCase):
         for value in (0, -1, True, 1.5, "3"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 Workflow.create("example", max_attempts=value)
+        for value in ("", " user ", "x" * 101, None):
+            with self.subTest(identity=value), self.assertRaises(ValueError):
+                Workflow.create("example", owner_id=value)
+        with self.assertRaises(ValueError):
+            Workflow.create("example").transition(Status.RUNNING, actor_id=" ")
 
     def test_raw_string_status_is_rejected(self):
         with self.assertRaises(InvalidTransition):

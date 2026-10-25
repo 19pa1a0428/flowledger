@@ -20,17 +20,23 @@ class RepositoryTests(unittest.TestCase):
         self.repository = SqlAlchemyRepository(build_session_factory(self.engine))
 
     def test_data_survives_new_repository_and_engine(self):
-        workflow = self.repository.add(Workflow.create("durable synthetic job"))
-        self.repository.transition(workflow.id, Status.RUNNING, workflow.version)
+        workflow = self.repository.add(Workflow.create(
+            "durable synthetic job", owner_id="synthetic-owner"
+        ))
+        self.repository.transition(workflow.id, Status.RUNNING, workflow.version,
+                                   actor_id="synthetic-worker")
         self.engine.dispose()
         restarted_engine = create_engine(str(self.engine.url))
         self.addCleanup(restarted_engine.dispose)
         restarted = SqlAlchemyRepository(build_session_factory(restarted_engine))
         restored = restarted.get(workflow.id)
         self.assertEqual(restored.status, Status.RUNNING)
+        self.assertEqual(restored.owner_id, "synthetic-owner")
         self.assertEqual(restored.attempts, 1)
         self.assertEqual([event.status for event in restored.events],
                          [Status.PENDING, Status.RUNNING])
+        self.assertEqual([event.actor_id for event in restored.events],
+                         ["synthetic-owner", "synthetic-worker"])
         self.assertTrue(all(event.occurred_at.tzinfo is not None for event in restored.events))
 
     def test_failed_commit_rolls_back_snapshot_and_event(self):

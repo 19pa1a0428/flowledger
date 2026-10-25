@@ -43,13 +43,15 @@ class SqlAlchemyRepository:
                 raise ValueError("Command must reference the new workflow and its version")
             workflow.transition(command.target)  # Reject invalid intent before writing.
         record = WorkflowRecord(
-            id=workflow.id, name=workflow.name, status=workflow.status.value,
+            id=workflow.id, name=workflow.name, owner_id=workflow.owner_id,
+            status=workflow.status.value,
             attempts=workflow.attempts, max_attempts=workflow.max_attempts,
             version=workflow.version,
             created_at=workflow.events[0].occurred_at,
             updated_at=workflow.events[-1].occurred_at,
             events=[EventRecord(position=position, status=event.status.value,
-                                occurred_at=event.occurred_at, attempt=event.attempt)
+                                occurred_at=event.occurred_at, attempt=event.attempt,
+                                actor_id=event.actor_id)
                     for position, event in enumerate(workflow.events)],
         )
         with self._sessions.begin() as session:
@@ -68,9 +70,10 @@ class SqlAlchemyRepository:
                 raise KeyError(workflow_id)
             return self._to_domain(record)
 
-    def transition(self, workflow_id: UUID, target: Status, expected_version: int) -> Workflow:
+    def transition(self, workflow_id: UUID, target: Status, expected_version: int,
+                   *, actor_id: str = "system") -> Workflow:
         with self._sessions.begin() as session:
-            return self._transition(session, workflow_id, target, expected_version)
+            return self._transition(session, workflow_id, target, expected_version, actor_id)
 
     def execute(self, command: WorkerCommand, *, reject_invalid: bool = False) -> bool:
         """Atomically retain a receipt and apply one database-only transition.
@@ -97,7 +100,7 @@ class SqlAlchemyRepository:
                 # protects history if transition implementation gains earlier writes.
                 with session.begin_nested():
                     self._transition(session, command.workflow_id, command.target,
-                                     command.expected_version)
+                                     command.expected_version, "worker")
             except (KeyError, ConcurrencyConflict, InvalidTransition) as error:
                 if not reject_invalid:
                     raise
@@ -109,7 +112,7 @@ class SqlAlchemyRepository:
         return True
 
     def _transition(self, session: Session, workflow_id: UUID, target: Status,
-                    expected_version: int) -> Workflow:
+                    expected_version: int, actor_id: str) -> Workflow:
         record = self._find(session, workflow_id)
         if record is None:
             raise KeyError(workflow_id)
@@ -118,7 +121,7 @@ class SqlAlchemyRepository:
             raise ConcurrencyConflict(
                 f"Expected version {expected_version}, found {current.version}"
             )
-        updated = current.transition(target)
+        updated = current.transition(target, actor_id=actor_id)
         event = updated.events[-1]
         result = session.execute(
             update(WorkflowRecord)
@@ -134,7 +137,7 @@ class SqlAlchemyRepository:
         session.add(EventRecord(
             workflow_id=workflow_id,
             position=len(current.events), status=event.status.value,
-            occurred_at=event.occurred_at, attempt=event.attempt,
+            occurred_at=event.occurred_at, attempt=event.attempt, actor_id=event.actor_id,
         ))
         return updated
 
@@ -146,9 +149,11 @@ class SqlAlchemyRepository:
 
     @staticmethod
     def _to_domain(record: WorkflowRecord) -> Workflow:
-        events = tuple(Event(Status(event.status), _utc(event.occurred_at), event.attempt)
+        events = tuple(Event(Status(event.status), _utc(event.occurred_at), event.attempt,
+                             event.actor_id)
                        for event in record.events)
-        return Workflow(id=record.id, name=record.name, status=Status(record.status),
+        return Workflow(id=record.id, name=record.name, owner_id=record.owner_id,
+                        status=Status(record.status),
                         attempts=record.attempts, max_attempts=record.max_attempts,
                         version=record.version,
                         events=events)
