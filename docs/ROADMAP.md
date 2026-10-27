@@ -47,8 +47,11 @@ will produce a finished feature. Work progresses only when the preceding increme
 14. DONE: Persist workflow ownership and event actors. Owner viewers can read their
     workflows, non-owner viewers receive non-enumerating 404 responses, operators retain
     cross-workflow access, and worker/API transitions have explicit audited actors.
-15. NEXT: Add credential expiry and revocation semantics with deterministic clock tests
-    before exposing administrative audit queries.
+15. DONE: Add timezone-aware credential expiry and explicit revocation semantics with
+    deterministic clock and negative HTTP contract tests. Expired, revoked and unknown
+    tokens share a generic authentication failure; configuration changes require restart.
+16. NEXT: Add a bounded, operator-only administrative audit query with stable pagination
+    and subject/status filters before building the first React view.
 
 ## Working cadence
 

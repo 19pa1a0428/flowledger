@@ -72,7 +72,7 @@ application starts but every protected request returns `401`.
 
 ```bash
 export FLOWLEDGER_AUTH_TOKENS='[
-  {"token":"replace-with-a-random-secret-of-at-least-32-characters","subject":"local-operator","role":"operator"}
+  {"token":"replace-with-a-random-secret-of-at-least-32-characters","subject":"local-operator","role":"operator","expires_at":"2026-11-01T00:00:00Z","revoked":false}
 ]'
 ```
 
@@ -85,8 +85,13 @@ export FLOWLEDGER_AUTH_TOKENS='[
 Tokens must contain 32–4096 characters. FlowLedger stores only SHA-256 digests in the
 authenticator and uses constant-time digest comparison, but the source environment still
 contains the raw secrets. Generate strong random values with a secret manager, use TLS,
-avoid committing or logging them, and restart after rotation. This boundary has no
-login, token issuance, expiry, revocation, persisted users or ownership reassignment.
+avoid committing or logging them, and restart after rotation. `expires_at` is optional,
+must be an ISO 8601 timestamp with a timezone, and expires the token at the exact boundary
+(`now >= expires_at`); there is intentionally no clock-skew allowance. `revoked` is an
+optional boolean that defaults to false. Expired, revoked and unknown tokens all receive
+the same generic `401` response. Configuration is loaded at process startup, so changing
+expiry or revocation requires a restart. This boundary has no login, token issuance,
+dynamic revocation store, persisted users or ownership reassignment.
 
 New workflows store the creating operator's subject as `owner_id`. Each history event
 stores the subject that caused it as `actor_id`; database-only worker transitions use

@@ -1,9 +1,10 @@
 import unittest
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from flowledger.api import create_app
-from flowledger.auth import Principal, Role, TokenAuthenticator
+from flowledger.auth import Credential, Principal, Role, TokenAuthenticator
 from flowledger.database import Base
 from flowledger.repository import SqlAlchemyRepository, build_session_factory
 from sqlalchemy import create_engine
@@ -163,3 +164,23 @@ class ApiTests(unittest.TestCase):
                                      json={'status': 'running', 'expected_version': 0})
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()['events'][-1]['actor_id'], 'other-operator')
+
+    def test_expired_and_revoked_tokens_share_invalid_token_contract(self):
+        now = datetime(2026, 10, 26, 20, tzinfo=timezone.utc)
+        principal = Principal('synthetic-operator', Role.OPERATOR)
+        authenticator = TokenAuthenticator({
+            'expired-test-token-0000000000000000': Credential(
+                principal, expires_at=now),
+            'revoked-test-token-0000000000000000': Credential(
+                principal, revoked=True),
+        }, clock=lambda: now)
+        with TestClient(create_app(self.repository, authenticator)) as client:
+            for token in ('expired-test-token-0000000000000000',
+                          'revoked-test-token-0000000000000000'):
+                with self.subTest(token=token):
+                    response = client.post('/workflows', json={'name': 'denied'}, headers={
+                        'Authorization': f'Bearer {token}',
+                    })
+                    self.assertEqual(response.status_code, 401)
+                    self.assertEqual(response.headers['www-authenticate'], 'Bearer')
+                    self.assertEqual(response.json()['detail'], 'Not authenticated')

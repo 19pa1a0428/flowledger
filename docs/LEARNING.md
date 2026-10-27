@@ -1,5 +1,46 @@
 # Learning journal
 
+## 2026-10-26 — Deterministic credential expiry and revocation
+
+Assistance: AI-assisted credential lifecycle design, deterministic tests and documentation.
+
+Extended pre-provisioned opaque credentials with optional timezone-aware `expires_at` and
+boolean `revoked` fields. Authentication accepts a credential strictly before its expiry;
+the exact timestamp is already expired. An injected clock makes that boundary testable
+without sleeps or timestamp manipulation. Revocation takes precedence, while credentials
+without either field preserve the existing behavior.
+
+Expired, revoked and unknown tokens deliberately use the same `401 Not authenticated`
+response and Bearer challenge. This avoids revealing whether a presented secret used to be
+valid. Configuration rejects naive timestamps, invalid timestamp types, non-boolean
+revocation values and unknown fields. Existing programmatic token-to-principal mappings
+remain compatible, while richer callers can construct an explicit `Credential`.
+
+Validation: Python 3.12 ran 101 tests locally: 80 passed and 21 live Redis contract tests
+were explicitly skipped because no disposable Redis URL was configured. Four new tests
+cover pre-expiry access, exact-boundary expiry, continued expiry, explicit revocation,
+active peer isolation, JSON parsing/validation and the shared negative HTTP contract.
+Existing domain, persistence, migration, outbox, Redis reliability and worker tests passed.
+No live PostgreSQL or Redis result is claimed locally.
+
+Limits: expiry and revocation are static process configuration. Operators must update the
+secret source and restart every API process; there is no issuance endpoint, refresh token,
+dynamic revocation service, clock-skew allowance or persisted identity store.
+
+Exercise: configure one synthetic token expiring one second after a fixed test clock and
+one token with `revoked: true`. Advance the injected clock to the exact expiry boundary and
+confirm both tokens receive the same `401` response as an unknown token.
+
+Interview question: Why treat `now == expires_at` as expired and return the same response
+for expired, revoked and unknown tokens?
+
+Answer outline: a half-open validity interval gives an unambiguous boundary that services
+can implement consistently. A generic response avoids turning authentication into a token
+status oracle; internal observability can retain safe reason codes without exposing them.
+
+Next: add a bounded, operator-only administrative audit query with stable pagination and
+subject/status filters.
+
 ## 2026-10-24 — Workflow ownership and actor-aware audit
 
 Assistance: AI-assisted ownership model, migration, access-control tests and documentation.
