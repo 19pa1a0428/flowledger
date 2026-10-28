@@ -1,4 +1,5 @@
 """Transactional persistence for workflow snapshots and their event history."""
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
 from uuid import UUID
@@ -16,6 +17,24 @@ SessionFactory = Callable[[], Session]
 
 class ConcurrencyConflict(RuntimeError):
     """The workflow changed after the caller read it."""
+
+
+@dataclass(frozen=True)
+class AuditEntry:
+    event_id: int
+    workflow_id: UUID
+    position: int
+    status: Status
+    occurred_at: datetime
+    attempt: int
+    actor_id: str
+    owner_id: str
+
+
+@dataclass(frozen=True)
+class AuditPage:
+    items: tuple[AuditEntry, ...]
+    next_cursor: int | None
 
 
 def build_session_factory(engine: Engine) -> sessionmaker[Session]:
@@ -69,6 +88,51 @@ class SqlAlchemyRepository:
             if record is None:
                 raise KeyError(workflow_id)
             return self._to_domain(record)
+
+    def list_audit_events(self, *, limit: int = 50, cursor: int | None = None,
+                          actor_id: str | None = None,
+                          status: Status | None = None) -> AuditPage:
+        """Return a stable newest-first page of persisted workflow events."""
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Audit page limit must be between 1 and 100")
+        if cursor is not None and (type(cursor) is not int or cursor < 1):
+            raise ValueError("Audit cursor must be a positive event ID")
+        if actor_id is not None and (
+            type(actor_id) is not str or actor_id != actor_id.strip()
+            or not 1 <= len(actor_id) <= 100
+        ):
+            raise ValueError("Audit actor must be 1-100 non-whitespace-padded characters")
+        if status is not None and not isinstance(status, Status):
+            raise TypeError("Audit status must be a Status value")
+
+        statement = (
+            select(EventRecord, WorkflowRecord.owner_id)
+            .join(WorkflowRecord, WorkflowRecord.id == EventRecord.workflow_id)
+            .order_by(EventRecord.id.desc())
+            .limit(limit + 1)
+        )
+        if cursor is not None:
+            statement = statement.where(EventRecord.id < cursor)
+        if actor_id is not None:
+            statement = statement.where(EventRecord.actor_id == actor_id)
+        if status is not None:
+            statement = statement.where(EventRecord.status == status.value)
+
+        with self._sessions() as session:
+            rows = session.execute(statement).all()
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        items = tuple(AuditEntry(
+            event_id=event.id,
+            workflow_id=event.workflow_id,
+            position=event.position,
+            status=Status(event.status),
+            occurred_at=_utc(event.occurred_at),
+            attempt=event.attempt,
+            actor_id=event.actor_id,
+            owner_id=owner_id,
+        ) for event, owner_id in rows)
+        return AuditPage(items, items[-1].event_id if has_more else None)
 
     def transition(self, workflow_id: UUID, target: Status, expected_version: int,
                    *, actor_id: str = "system") -> Workflow:

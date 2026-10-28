@@ -78,3 +78,46 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(restored, updated)
         self.assertEqual([event.status for event in restored.events],
                          [Status.PENDING, Status.RUNNING])
+
+    def test_audit_query_filters_actor_and_status(self):
+        first = self.repository.add(Workflow.create(
+            "first audit job", owner_id="owner-one", actor_id="actor-one"
+        ))
+        self.repository.transition(first.id, Status.RUNNING, first.version,
+                                   actor_id="actor-two")
+        second = self.repository.add(Workflow.create(
+            "second audit job", owner_id="owner-two", actor_id="actor-one"
+        ))
+
+        page = self.repository.list_audit_events(
+            actor_id="actor-one", status=Status.PENDING,
+        )
+        self.assertEqual([item.workflow_id for item in page.items],
+                         [second.id, first.id])
+        self.assertEqual([item.owner_id for item in page.items],
+                         ["owner-two", "owner-one"])
+        self.assertTrue(all(item.actor_id == "actor-one" for item in page.items))
+        self.assertTrue(all(item.status is Status.PENDING for item in page.items))
+        self.assertTrue(all(item.occurred_at.tzinfo is not None for item in page.items))
+        self.assertIsNone(page.next_cursor)
+
+    def test_audit_cursor_is_stable_when_new_events_arrive(self):
+        first = self.repository.add(Workflow.create(
+            "first page job", owner_id="owner-one"
+        ))
+        self.repository.transition(first.id, Status.RUNNING, first.version,
+                                   actor_id="operator")
+        self.repository.add(Workflow.create("second page job", owner_id="owner-two"))
+
+        first_page = self.repository.list_audit_events(limit=2)
+        self.assertEqual(len(first_page.items), 2)
+        self.assertIsNotNone(first_page.next_cursor)
+        self.repository.add(Workflow.create("later job", owner_id="owner-three"))
+        second_page = self.repository.list_audit_events(
+            limit=2, cursor=first_page.next_cursor,
+        )
+
+        first_ids = {item.event_id for item in first_page.items}
+        self.assertTrue(first_ids.isdisjoint(item.event_id for item in second_page.items))
+        self.assertEqual([item.workflow_id for item in second_page.items], [first.id])
+        self.assertIsNone(second_page.next_cursor)

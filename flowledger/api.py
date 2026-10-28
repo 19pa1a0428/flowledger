@@ -3,7 +3,7 @@ from datetime import datetime
 import os
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import create_engine
@@ -53,6 +53,24 @@ class WorkflowResponse(BaseModel):
     events: list[EventResponse]
 
 
+class AuditEntryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    event_id: int
+    workflow_id: UUID
+    position: int
+    status: Status
+    occurred_at: datetime
+    attempt: int
+    actor_id: str
+    owner_id: str
+
+
+class AuditPageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    items: list[AuditEntryResponse]
+    next_cursor: int | None
+
+
 def create_app(repository: SqlAlchemyRepository | None = None,
                authenticator: TokenAuthenticator | None = None) -> FastAPI:
     app = FastAPI(title="FlowLedger", version="0.4.0")
@@ -82,6 +100,20 @@ def create_app(repository: SqlAlchemyRepository | None = None,
         if principal.role is not Role.OPERATOR:
             raise HTTPException(403, "Operator role required")
         return principal
+
+    @app.get("/audit/events", response_model=AuditPageResponse)
+    def list_audit_events(
+        limit: int = Query(50, ge=1, le=100),
+        cursor: int | None = Query(None, ge=1),
+        subject: str | None = Query(None, min_length=1, max_length=100),
+        status: Status | None = Query(None),
+        _principal: Principal = Depends(require_operator),
+    ):
+        if subject is not None and subject != subject.strip():
+            raise HTTPException(422, "Subject must not have surrounding whitespace")
+        return repository.list_audit_events(
+            limit=limit, cursor=cursor, actor_id=subject, status=status,
+        )
 
     @app.post("/workflows", status_code=201, response_model=WorkflowResponse)
     def create_workflow(body: CreateWorkflow, response: Response,

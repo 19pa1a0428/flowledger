@@ -1,5 +1,45 @@
 # Learning journal
 
+## 2026-10-27 — Operator audit query with stable pagination
+
+Assistance: AI-assisted audit contract design, persistence/API tests and documentation.
+
+Added a read-only `GET /audit/events` endpoint for operators. It returns persisted workflow
+events newest-first with their event ID, workflow ID, position, status, timestamp, attempt,
+actor and immutable workflow owner. Optional `subject` and `status` filters select the
+audited actor and event status. Viewers receive `403`, and malformed, zero or oversized
+pagination inputs receive `422` before reaching persistence.
+
+Pagination uses the monotonically increasing event primary key as an exclusive cursor.
+After a page ending at event N, the next query requests IDs below N. A deterministic test
+inserts a newer event between page requests and proves it neither appears in the older page
+nor causes duplicate entries. The query fetches one extra row to return `next_cursor` only
+when more matching evidence exists. Pages are capped at 100 records.
+
+Validation: Python 3.12 ran 106 tests locally: 85 passed and 21 live Redis contract tests
+were explicitly skipped because no disposable Redis URL was configured. Five new tests
+cover actor/status filtering, owner context, timezone restoration, stable pagination during
+a concurrent insert, operator-only access and bounded input validation. Existing domain,
+authentication, migration, outbox, Redis reliability and worker tests passed. No live
+PostgreSQL or Redis result is claimed locally. No schema migration was required.
+
+Limits: this query has no date range, text search, aggregate counts, export or database
+snapshot spanning multiple requests. Event IDs provide stable forward paging while rows
+remain immutable; workflow deletion would remove its events through the existing cascade.
+
+Exercise: create two synthetic workflows, transition one to running, request audit events
+with `limit=2`, then create another workflow before following `next_cursor`. Confirm the
+second page contains only older event IDs and has no duplicate from the first page.
+
+Interview question: Why use an exclusive event-ID cursor instead of page-number/offset
+pagination for a live audit stream?
+
+Answer outline: new rows inserted before an offset shift later pages, which can duplicate
+or skip records. A unique ordered key anchors the next query below the last seen ID. It is
+stable under new inserts and efficient with an index, though it is not a multi-page snapshot.
+
+Next: add an owner-aware, cursor-paginated workflow list API for the first React view.
+
 ## 2026-10-26 — Deterministic credential expiry and revocation
 
 Assistance: AI-assisted credential lifecycle design, deterministic tests and documentation.

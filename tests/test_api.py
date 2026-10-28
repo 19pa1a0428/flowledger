@@ -184,3 +184,49 @@ class ApiTests(unittest.TestCase):
                     self.assertEqual(response.status_code, 401)
                     self.assertEqual(response.headers['www-authenticate'], 'Bearer')
                     self.assertEqual(response.json()['detail'], 'Not authenticated')
+
+    def test_operator_audit_query_paginates_and_filters(self):
+        first_path = self.create().headers['Location']
+        self.transition(first_path, 'running')
+        second_path = self.create().headers['Location']
+
+        first_page = self.client.get('/audit/events', params={'limit': 2})
+        self.assertEqual(first_page.status_code, 200)
+        first_body = first_page.json()
+        self.assertEqual(len(first_body['items']), 2)
+        self.assertIsNotNone(first_body['next_cursor'])
+        self.assertGreater(first_body['items'][0]['event_id'],
+                           first_body['items'][1]['event_id'])
+        self.assertEqual(first_body['items'][0]['workflow_id'], second_path.rsplit('/', 1)[-1])
+
+        second_page = self.client.get('/audit/events', params={
+            'limit': 2, 'cursor': first_body['next_cursor'],
+        }).json()
+        self.assertEqual(len(second_page['items']), 1)
+        self.assertIsNone(second_page['next_cursor'])
+        seen = {item['event_id'] for item in first_body['items']}
+        self.assertTrue(seen.isdisjoint(item['event_id'] for item in second_page['items']))
+
+        filtered = self.client.get('/audit/events', params={
+            'subject': 'synthetic-operator', 'status': 'running',
+        }).json()
+        self.assertEqual(len(filtered['items']), 1)
+        self.assertEqual(filtered['items'][0]['status'], 'running')
+        self.assertEqual(filtered['items'][0]['actor_id'], 'synthetic-operator')
+
+    def test_audit_query_requires_operator(self):
+        self.create()
+        with TestClient(self.app, headers={
+            'Authorization': f'Bearer {self.viewer_token}'
+        }) as viewer:
+            response = viewer.get('/audit/events')
+            self.assertEqual((response.status_code, response.json()['detail']),
+                             (403, 'Operator role required'))
+
+    def test_audit_query_rejects_unbounded_or_invalid_filters(self):
+        for params in ({'limit': 0}, {'limit': 101}, {'cursor': 0},
+                       {'subject': ' actor '}, {'status': 'unknown'}):
+            with self.subTest(params=params):
+                self.assertEqual(
+                    self.client.get('/audit/events', params=params).status_code, 422
+                )

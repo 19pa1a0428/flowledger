@@ -101,6 +101,26 @@ transition any workflow for operational support, but cannot reassign ownership. 
 ownership migration marks existing snapshots and events as `legacy-system` because their
 historical human actor cannot be reconstructed honestly.
 
+### Administrative audit query
+
+Operators can inspect persisted workflow history across workflows with
+`GET /audit/events`. Results are newest-first and limited to 1–100 records (default 50).
+Pass the returned `next_cursor` as `cursor` for the next page. The cursor is the last seen
+event ID and the next query uses an exclusive boundary, so events created after the first
+request do not shift older pages.
+
+Optional `subject` and `status` query parameters filter by event actor and workflow status
+at that event. Each item includes `event_id`, `workflow_id`, event `position`, `status`,
+`occurred_at`, `attempt`, `actor_id`, and the workflow's immutable `owner_id`. Viewers
+receive `403`; this is an operational audit surface rather than an owner-facing history
+endpoint. It has no full-text search, date-range filter, export, aggregate counts or
+cross-request database snapshot.
+
+```bash
+curl -H "Authorization: Bearer $FLOWLEDGER_OPERATOR_TOKEN" \
+  "http://127.0.0.1:8000/audit/events?limit=50&subject=local-operator&status=running"
+```
+
 ## Try the API
 
 ```bash
@@ -108,8 +128,8 @@ python -m alembic upgrade head
 uvicorn flowledger.api:app --reload --host 127.0.0.1
 ```
 
-Open http://127.0.0.1:8000/docs. The current routes are `POST /workflows`,
-`GET /workflows/{id}`, and `POST /workflows/{id}/transitions`.
+Open http://127.0.0.1:8000/docs. The current routes include `POST /workflows`,
+`GET /workflows/{id}`, `POST /workflows/{id}/transitions`, and `GET /audit/events`.
 Use the OpenAPI **Authorize** control or send `Authorization: Bearer <token>`.
 The transition body is shaped like
 `{"status": "running", "expected_version": 0}`. After a successful transition, use

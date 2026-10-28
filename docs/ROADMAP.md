@@ -50,8 +50,11 @@ will produce a finished feature. Work progresses only when the preceding increme
 15. DONE: Add timezone-aware credential expiry and explicit revocation semantics with
     deterministic clock and negative HTTP contract tests. Expired, revoked and unknown
     tokens share a generic authentication failure; configuration changes require restart.
-16. NEXT: Add a bounded, operator-only administrative audit query with stable pagination
-    and subject/status filters before building the first React view.
+16. DONE: Add a bounded, operator-only administrative audit query with newest-first,
+    exclusive event-ID cursor pagination, actor/status filters and negative authorization
+    and validation contracts.
+17. NEXT: Add an owner-aware, cursor-paginated workflow list API as the backend contract
+    for the first React/TypeScript workflow list view.
 
 ## Working cadence
 
