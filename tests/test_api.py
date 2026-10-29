@@ -230,3 +230,65 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual(
                     self.client.get('/audit/events', params=params).status_code, 422
                 )
+
+    def test_workflow_list_is_owner_aware_and_operator_can_see_all(self):
+        own = self.create().json()
+        with TestClient(self.app, headers={
+            'Authorization': f'Bearer {self.other_operator_token}'
+        }) as other_operator:
+            other = other_operator.post('/workflows', json={'name': 'other workflow'}).json()
+
+        with TestClient(self.app, headers={
+            'Authorization': f'Bearer {self.viewer_token}'
+        }) as viewer:
+            response = viewer.get('/workflows')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual([item['id'] for item in response.json()['items']], [own['id']])
+            self.assertNotIn('events', response.json()['items'][0])
+
+        operator_items = self.client.get('/workflows').json()['items']
+        self.assertEqual({item['id'] for item in operator_items}, {own['id'], other['id']})
+
+    def test_workflow_list_paginates_stably_and_filters_status(self):
+        oldest_path = self.create().headers['Location']
+        self.create()
+        self.create()
+        first_page = self.client.get('/workflows', params={'limit': 2}).json()
+        self.assertEqual(len(first_page['items']), 2)
+        self.assertIsNotNone(first_page['next_cursor'])
+
+        self.create()
+        second_page = self.client.get('/workflows', params={
+            'limit': 2, 'cursor': first_page['next_cursor'],
+        }).json()
+        self.assertEqual([item['id'] for item in second_page['items']],
+                         [oldest_path.rsplit('/', 1)[-1]])
+        first_ids = {item['id'] for item in first_page['items']}
+        self.assertTrue(first_ids.isdisjoint(item['id'] for item in second_page['items']))
+
+        self.transition(oldest_path, 'running')
+        filtered = self.client.get('/workflows', params={'status': 'running'}).json()
+        self.assertEqual([item['id'] for item in filtered['items']],
+                         [oldest_path.rsplit('/', 1)[-1]])
+
+    def test_workflow_list_rejects_bad_bounds_and_cross_owner_cursor(self):
+        own = self.create().json()
+        with TestClient(self.app, headers={
+            'Authorization': f'Bearer {self.other_operator_token}'
+        }) as other_operator:
+            hidden = other_operator.post('/workflows', json={'name': 'hidden'}).json()
+
+        with TestClient(self.app, headers={
+            'Authorization': f'Bearer {self.viewer_token}'
+        }) as viewer:
+            response = viewer.get('/workflows', params={'cursor': hidden['id']})
+            self.assertEqual((response.status_code, response.json()['detail']),
+                             (422, 'Invalid workflow cursor'))
+            self.assertEqual(viewer.get('/workflows', params={
+                'cursor': own['id']
+            }).status_code, 200)
+
+        for params in ({'limit': 0}, {'limit': 101}, {'cursor': 'not-a-uuid'},
+                       {'status': 'unknown'}):
+            with self.subTest(params=params):
+                self.assertEqual(self.client.get('/workflows', params=params).status_code, 422)

@@ -121,3 +121,49 @@ class RepositoryTests(unittest.TestCase):
         self.assertTrue(first_ids.isdisjoint(item.event_id for item in second_page.items))
         self.assertEqual([item.workflow_id for item in second_page.items], [first.id])
         self.assertIsNone(second_page.next_cursor)
+
+    def test_workflow_list_filters_owner_and_status_without_loading_history(self):
+        owned = self.repository.add(Workflow.create(
+            "owned workflow", owner_id="viewer-one"
+        ))
+        running = self.repository.transition(
+            owned.id, Status.RUNNING, owned.version, actor_id="operator"
+        )
+        self.repository.add(Workflow.create(
+            "other workflow", owner_id="viewer-two"
+        ))
+
+        page = self.repository.list_workflows(
+            owner_id="viewer-one", status=Status.RUNNING,
+        )
+        self.assertEqual(len(page.items), 1)
+        summary = page.items[0]
+        self.assertEqual((summary.id, summary.status, summary.version),
+                         (running.id, Status.RUNNING, 1))
+        self.assertEqual(summary.owner_id, "viewer-one")
+        self.assertTrue(summary.created_at.tzinfo is not None)
+        self.assertTrue(summary.updated_at.tzinfo is not None)
+        self.assertFalse(hasattr(summary, "events"))
+
+    def test_workflow_cursor_is_stable_when_new_workflows_arrive(self):
+        oldest = self.repository.add(Workflow.create("oldest", owner_id="viewer"))
+        self.repository.add(Workflow.create("middle", owner_id="viewer"))
+        self.repository.add(Workflow.create("newest", owner_id="viewer"))
+
+        first_page = self.repository.list_workflows(limit=2, owner_id="viewer")
+        self.assertEqual(len(first_page.items), 2)
+        self.assertIsNotNone(first_page.next_cursor)
+        self.repository.add(Workflow.create("later", owner_id="viewer"))
+        second_page = self.repository.list_workflows(
+            limit=2, cursor=first_page.next_cursor, owner_id="viewer",
+        )
+
+        first_ids = {item.id for item in first_page.items}
+        self.assertTrue(first_ids.isdisjoint(item.id for item in second_page.items))
+        self.assertEqual([item.id for item in second_page.items], [oldest.id])
+        self.assertIsNone(second_page.next_cursor)
+
+    def test_workflow_cursor_cannot_cross_owner_scope(self):
+        hidden = self.repository.add(Workflow.create("hidden", owner_id="other-viewer"))
+        with self.assertRaisesRegex(ValueError, "Invalid workflow cursor"):
+            self.repository.list_workflows(cursor=hidden.id, owner_id="viewer")

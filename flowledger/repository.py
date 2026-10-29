@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import Engine, select, update
+from sqlalchemy import Engine, and_, or_, select, update
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from flowledger.database import EventRecord, OutboxRecord, WorkflowRecord
@@ -35,6 +35,25 @@ class AuditEntry:
 class AuditPage:
     items: tuple[AuditEntry, ...]
     next_cursor: int | None
+
+
+@dataclass(frozen=True)
+class WorkflowSummary:
+    id: UUID
+    name: str
+    owner_id: str
+    status: Status
+    attempts: int
+    max_attempts: int
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class WorkflowPage:
+    items: tuple[WorkflowSummary, ...]
+    next_cursor: UUID | None
 
 
 def build_session_factory(engine: Engine) -> sessionmaker[Session]:
@@ -133,6 +152,57 @@ class SqlAlchemyRepository:
             owner_id=owner_id,
         ) for event, owner_id in rows)
         return AuditPage(items, items[-1].event_id if has_more else None)
+
+    def list_workflows(self, *, limit: int = 50, cursor: UUID | None = None,
+                       owner_id: str | None = None,
+                       status: Status | None = None) -> WorkflowPage:
+        """Return a stable newest-first page, optionally restricted to one owner."""
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Workflow page limit must be between 1 and 100")
+        if cursor is not None and not isinstance(cursor, UUID):
+            raise TypeError("Workflow cursor must be a UUID")
+        if owner_id is not None and (
+            type(owner_id) is not str or owner_id != owner_id.strip()
+            or not 1 <= len(owner_id) <= 100
+        ):
+            raise ValueError("Workflow owner must be 1-100 non-whitespace-padded characters")
+        if status is not None and not isinstance(status, Status):
+            raise TypeError("Workflow status must be a Status value")
+
+        with self._sessions() as session:
+            statement = (select(WorkflowRecord)
+                         .order_by(WorkflowRecord.created_at.desc(),
+                                   WorkflowRecord.id.desc())
+                         .limit(limit + 1))
+            if owner_id is not None:
+                statement = statement.where(WorkflowRecord.owner_id == owner_id)
+            if status is not None:
+                statement = statement.where(WorkflowRecord.status == status.value)
+            if cursor is not None:
+                anchor = session.get(WorkflowRecord, cursor)
+                if anchor is None or (owner_id is not None and anchor.owner_id != owner_id):
+                    raise ValueError("Invalid workflow cursor")
+                statement = statement.where(or_(
+                    WorkflowRecord.created_at < anchor.created_at,
+                    and_(WorkflowRecord.created_at == anchor.created_at,
+                         WorkflowRecord.id < anchor.id),
+                ))
+            records = list(session.scalars(statement))
+
+        has_more = len(records) > limit
+        records = records[:limit]
+        items = tuple(WorkflowSummary(
+            id=record.id,
+            name=record.name,
+            owner_id=record.owner_id,
+            status=Status(record.status),
+            attempts=record.attempts,
+            max_attempts=record.max_attempts,
+            version=record.version,
+            created_at=_utc(record.created_at),
+            updated_at=_utc(record.updated_at),
+        ) for record in records)
+        return WorkflowPage(items, items[-1].id if has_more else None)
 
     def transition(self, workflow_id: UUID, target: Status, expected_version: int,
                    *, actor_id: str = "system") -> Workflow:

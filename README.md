@@ -121,6 +121,26 @@ curl -H "Authorization: Bearer $FLOWLEDGER_OPERATOR_TOKEN" \
   "http://127.0.0.1:8000/audit/events?limit=50&subject=local-operator&status=running"
 ```
 
+### Workflow list
+
+Authenticated clients can request `GET /workflows`. Operators see all workflows; viewers
+see only workflows whose immutable `owner_id` matches their subject. Results are lightweight
+summaries without event history and contain `id`, `name`, `owner_id`, `status`, attempt
+limits, `version`, `created_at`, and `updated_at`. Fetch `GET /workflows/{id}` when the full
+ordered history is needed.
+
+The list is newest-first by `(created_at, id)`, accepts `limit` from 1–100, and returns the
+last workflow ID as `next_cursor` when another page exists. Pass it as `cursor` while keeping
+the same filters. An optional `status` filter accepts the domain status values. A viewer
+cannot use another owner's workflow as a cursor; nonexistent and out-of-scope cursors share
+the same `422` response. New inserts do not shift older pages, but status changes and deletion
+can change a later filtered page because pagination is not a cross-request database snapshot.
+
+```bash
+curl -H "Authorization: Bearer $FLOWLEDGER_VIEWER_TOKEN" \
+  "http://127.0.0.1:8000/workflows?limit=25&status=pending"
+```
+
 ## Try the API
 
 ```bash
@@ -129,7 +149,8 @@ uvicorn flowledger.api:app --reload --host 127.0.0.1
 ```
 
 Open http://127.0.0.1:8000/docs. The current routes include `POST /workflows`,
-`GET /workflows/{id}`, `POST /workflows/{id}/transitions`, and `GET /audit/events`.
+`GET /workflows`, `GET /workflows/{id}`, `POST /workflows/{id}/transitions`, and
+`GET /audit/events`.
 Use the OpenAPI **Authorize** control or send `Authorization: Bearer <token>`.
 The transition body is shaped like
 `{"status": "running", "expected_version": 0}`. After a successful transition, use

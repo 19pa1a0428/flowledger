@@ -53,6 +53,25 @@ class WorkflowResponse(BaseModel):
     events: list[EventResponse]
 
 
+class WorkflowSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    name: str
+    owner_id: str
+    status: Status
+    attempts: int
+    max_attempts: int
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkflowPageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    items: list[WorkflowSummaryResponse]
+    next_cursor: UUID | None
+
+
 class AuditEntryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     event_id: int
@@ -124,6 +143,25 @@ def create_app(repository: SqlAlchemyRepository | None = None,
         ))
         response.headers["Location"] = f"/workflows/{workflow.id}"
         return workflow
+
+    @app.get("/workflows", response_model=WorkflowPageResponse)
+    def list_workflows(
+        limit: int = Query(50, ge=1, le=100),
+        cursor: UUID | None = Query(None),
+        status: Status | None = Query(None),
+        principal: Principal = Depends(current_principal),
+    ):
+        try:
+            return repository.list_workflows(
+                limit=limit,
+                cursor=cursor,
+                owner_id=(None if principal.role is Role.OPERATOR else principal.subject),
+                status=status,
+            )
+        except ValueError as error:
+            if str(error) == "Invalid workflow cursor":
+                raise HTTPException(422, "Invalid workflow cursor") from None
+            raise
 
     @app.get("/workflows/{workflow_id}", response_model=WorkflowResponse)
     def get_workflow(workflow_id: UUID,

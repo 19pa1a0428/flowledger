@@ -1,5 +1,46 @@
 # Learning journal
 
+## 2026-10-28 — Owner-aware workflow list contract
+
+Assistance: AI-assisted list contract design, authorization/pagination tests and documentation.
+
+Added `GET /workflows` as the backend contract for the first React view. Operators receive
+all workflows, while viewers are restricted inside the database query to their immutable
+owner subject. List records are lightweight summaries with current state, retry/version
+metadata and UTC creation/update timestamps; event history remains on the detail endpoint.
+An optional status filter uses the existing domain enum.
+
+Results are ordered newest-first by `(created_at, id)`. The returned workflow ID anchors an
+exclusive next-page predicate using the anchor's persisted creation time and ID, preventing
+new inserts from shifting older pages. Pages are limited to 1–100 records and fetch one extra
+row to determine whether `next_cursor` exists. A viewer cannot anchor pagination with another
+owner's workflow; out-of-scope and nonexistent cursors share an invalid-cursor response.
+
+Validation: Python 3.12 ran 112 tests locally: 91 passed and 21 live Redis contract tests
+were explicitly skipped because no disposable Redis URL was configured. Six new tests cover
+owner/status filtering, lightweight summaries, UTC timestamps, operator visibility, stable
+pagination across a concurrent insert, cross-owner cursor denial and input bounds. Existing
+domain, authentication, audit, migration, outbox, Redis reliability and worker tests passed.
+No live PostgreSQL or Redis result is claimed locally. No schema migration was required.
+
+Limits: cursor requests must retain the same filters. Creation ordering is stable, but status
+changes or deletion between requests can change a filtered later page because this is not a
+multi-request snapshot. There is no name search, total count or frontend client yet.
+
+Exercise: create three synthetic workflows, fetch `GET /workflows?limit=2`, create a fourth,
+then follow `next_cursor`. Verify the second page contains only the original oldest workflow.
+Repeat with a viewer and confirm another owner's workflow never appears.
+
+Interview question: Why enforce owner scope in the repository query instead of loading an
+operator-sized page and filtering it in the API?
+
+Answer outline: filtering after pagination can leak counts, return short or empty pages and
+make cursors cross authorization boundaries. Applying policy in the query ensures every row
+and pagination decision belongs to the caller's allowed dataset while reducing data access.
+
+Next: scaffold React/TypeScript and implement typed workflow-list loading, empty, error and
+accessible pagination states.
+
 ## 2026-10-27 — Operator audit query with stable pagination
 
 Assistance: AI-assisted audit contract design, persistence/API tests and documentation.

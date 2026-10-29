@@ -53,8 +53,10 @@ will produce a finished feature. Work progresses only when the preceding increme
 16. DONE: Add a bounded, operator-only administrative audit query with newest-first,
     exclusive event-ID cursor pagination, actor/status filters and negative authorization
     and validation contracts.
-17. NEXT: Add an owner-aware, cursor-paginated workflow list API as the backend contract
-    for the first React/TypeScript workflow list view.
+17. DONE: Add an owner-aware, status-filtered workflow list API with bounded composite-order
+    cursor pagination, lightweight summaries, operator override and cross-owner cursor denial.
+18. NEXT: Scaffold the React/TypeScript client and implement the authenticated workflow list
+    with typed API parsing, loading, empty, error and accessible pagination states.
 
 ## Working cadence
 
