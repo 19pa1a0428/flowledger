@@ -1,5 +1,45 @@
 # Learning journal
 
+## 2026-10-29 — React workflow list foundation
+
+Assistance: AI-assisted frontend architecture, runtime contract parsing, accessibility tests,
+CI integration and documentation.
+
+Added a Vite React/TypeScript client as a module inside the existing repository. A bearer-token
+sign-in keeps its value only in component memory and opens the owner-aware workflow list API.
+The list supports status filtering, forward cursor navigation, returning through cursor history,
+sign-out, responsive presentation and explicit loading, empty, failure and retry states.
+
+The API adapter treats network JSON as unknown and validates page shape, UUIDs, domain status,
+timestamps and nonnegative integer fields before rendering. HTTP failures preserve a safe API
+detail when available. The UI uses semantic headings and tables, scoped headers, labeled
+pagination, live loading/page announcements, alert errors, keyboard focus indicators and native
+disabled controls. Tests cover valid and malformed contracts, auth/query construction, server
+errors, loading/table semantics, pagination controls, empty state and recovery after failure.
+
+Validation: Vitest 5.0.5 ran five frontend tests across two files and all passed. TypeScript
+7.0.2 and Vite 8.3.5 produced a production bundle successfully (18 transformed modules;
+196.23 kB JavaScript and 2.67 kB CSS before gzip). Python 3.12 still ran 112 tests locally:
+91 passed and 21 live Redis variants were skipped because no disposable Redis URL was configured.
+The CI workflow now runs `npm ci`, frontend tests and the production build independently from
+the Python 3.11–3.13 matrix. No deployed browser environment or new CI result is claimed.
+
+Limits: development uses a Vite proxy and production expects same-origin reverse-proxy routing.
+There is no token issuance, refresh, browser persistence, detail page, transition control,
+end-to-end browser test or deployed environment. In-memory tokens reduce persistence but do not
+replace content-security controls or protect against malicious scripts executing in the page.
+
+Exercise: run the API and `npm run dev`, sign in with a synthetic viewer token, filter to pending,
+move to the next page and back, then stop the API and use **Try again** after restarting it.
+
+Interview question: Why validate JSON at runtime when the client already has TypeScript types?
+
+Answer outline: TypeScript checks code at build time but is erased in the browser; a server,
+proxy or incompatible version can still return any JSON. Boundary validation fails explicitly
+before malformed values reach rendering or state logic and makes contract drift observable.
+
+Next: add the workflow detail/history view with deep links and accessible event chronology.
+
 ## 2026-10-28 — Owner-aware workflow list contract
 
 Assistance: AI-assisted list contract design, authorization/pagination tests and documentation.

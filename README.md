@@ -31,6 +31,16 @@ python -m pip install -e ".[test]"
 python -m unittest discover -s tests -v
 ```
 
+The React/TypeScript client has an independent deterministic test and production-build
+check. Node.js 24 is used in CI:
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run build
+```
+
 The migration tests use a temporary SQLite database so they run without external
 infrastructure. They verify upgrade, constraints, relationships, and downgrade.
 PostgreSQL DDL can be reviewed without connecting to a server:
@@ -140,6 +150,30 @@ can change a later filtered page because pagination is not a cross-request datab
 curl -H "Authorization: Bearer $FLOWLEDGER_VIEWER_TOKEN" \
   "http://127.0.0.1:8000/workflows?limit=25&status=pending"
 ```
+
+## React client
+
+The first frontend increment lives in `frontend/`. It provides an in-memory bearer-token
+sign-in and a responsive workflow list with status filtering, forward/back cursor navigation,
+and explicit loading, empty, error and retry states. The response parser validates UUIDs,
+statuses, timestamps and numeric fields at runtime before rendering; TypeScript types alone
+do not make network JSON trustworthy. Semantic headings, table headers, live status regions,
+visible focus styles and labeled pagination provide the initial accessibility contract.
+
+For local development, start the API on port 8000 and run:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Vite proxies `/workflows` to `http://127.0.0.1:8000`. A production build assumes the UI and
+API share an origin or that an external reverse proxy routes `/workflows` to FastAPI. The raw
+token is held only in React component memory: it is not persisted, refreshed or issued by the
+client, and a page reload signs out. This reduces browser persistence but is not a complete
+identity system or protection against script injection. The UI currently lists workflows;
+detail history and transition controls remain backend-only.
 
 ## Try the API
 

@@ -55,8 +55,11 @@ will produce a finished feature. Work progresses only when the preceding increme
     and validation contracts.
 17. DONE: Add an owner-aware, status-filtered workflow list API with bounded composite-order
     cursor pagination, lightweight summaries, operator override and cross-owner cursor denial.
-18. NEXT: Scaffold the React/TypeScript client and implement the authenticated workflow list
-    with typed API parsing, loading, empty, error and accessible pagination states.
+18. DONE: Scaffold the React/TypeScript client and implement the authenticated workflow list
+    with runtime-validated API parsing, in-memory credentials, status filtering, cursor history,
+    loading/empty/error/retry states, accessibility checks and an independent CI build/test job.
+19. NEXT: Add the workflow detail/history view with typed parsing, non-enumerating access
+    handling, deep-link navigation and accessible event chronology.
 
 ## Working cadence
 
