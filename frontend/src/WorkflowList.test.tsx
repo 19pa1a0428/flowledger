@@ -26,12 +26,16 @@ const item = {
 describe("WorkflowList", () => {
   it("announces loading and renders an accessible workflow table", async () => {
     vi.stubGlobal("fetch", vi.fn(() => response([item])));
-    render(<WorkflowList token="synthetic-token" onSignOut={() => undefined} />);
+    const onOpenWorkflow = vi.fn();
+    render(<WorkflowList token="synthetic-token" onSignOut={() => undefined}
+      onOpenWorkflow={onOpenWorkflow} />);
     expect(screen.getByRole("status").textContent).toContain("Loading");
     expect(await screen.findByRole("table", { name: "Authorized workflows" })).toBeTruthy();
     expect(screen.getByRole("rowheader", { name: /Synthetic report/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Previous" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Next" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("link", { name: "Synthetic report" }));
+    expect(onOpenWorkflow).toHaveBeenCalledWith(item.id);
   });
 
   it("renders empty and retryable error states", async () => {
@@ -39,7 +43,8 @@ describe("WorkflowList", () => {
       .mockRejectedValueOnce(new Error("Network unavailable"))
       .mockImplementationOnce(() => response([]));
     vi.stubGlobal("fetch", fetchMock);
-    render(<WorkflowList token="synthetic-token" onSignOut={() => undefined} />);
+    render(<WorkflowList token="synthetic-token" onSignOut={() => undefined}
+      onOpenWorkflow={() => undefined} />);
     expect((await screen.findByRole("alert")).textContent).toContain("Network unavailable");
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(screen.getByText("No workflows match this view.")).toBeTruthy());

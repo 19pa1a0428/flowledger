@@ -10,6 +10,7 @@ import {
 interface WorkflowListProps {
   token: string;
   onSignOut: () => void;
+  onOpenWorkflow: (workflowId: string) => void;
 }
 
 function displayDate(value: string): string {
@@ -19,7 +20,7 @@ function displayDate(value: string): string {
   }).format(new Date(value));
 }
 
-export function WorkflowList({ token, onSignOut }: WorkflowListProps) {
+export function WorkflowList({ token, onSignOut, onOpenWorkflow }: WorkflowListProps) {
   const [page, setPage] = useState<WorkflowPage | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [history, setHistory] = useState<(string | null)[]>([]);
@@ -119,7 +120,13 @@ export function WorkflowList({ token, onSignOut }: WorkflowListProps) {
               <tbody>
                 {page.items.map((workflow) => (
                   <tr key={workflow.id}>
-                    <th scope="row"><span>{workflow.name}</span><small>{workflow.id}</small></th>
+                    <th scope="row">
+                      <a href={`/workflows/${workflow.id}`} onClick={(event) => {
+                        event.preventDefault();
+                        onOpenWorkflow(workflow.id);
+                      }}>{workflow.name}</a>
+                      <small>{workflow.id}</small>
+                    </th>
                     <td><span className={`badge ${workflow.status}`}>{workflow.status}</span></td>
                     <td>{workflow.attempts} / {workflow.max_attempts}</td>
                     <td><time dateTime={workflow.updated_at}>{displayDate(workflow.updated_at)}</time></td>

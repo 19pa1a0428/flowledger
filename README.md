@@ -153,12 +153,17 @@ curl -H "Authorization: Bearer $FLOWLEDGER_VIEWER_TOKEN" \
 
 ## React client
 
-The first frontend increment lives in `frontend/`. It provides an in-memory bearer-token
-sign-in and a responsive workflow list with status filtering, forward/back cursor navigation,
-and explicit loading, empty, error and retry states. The response parser validates UUIDs,
-statuses, timestamps and numeric fields at runtime before rendering; TypeScript types alone
-do not make network JSON trustworthy. Semantic headings, table headers, live status regions,
-visible focus styles and labeled pagination provide the initial accessibility contract.
+The frontend lives in `frontend/`. It provides an in-memory bearer-token sign-in, a responsive
+workflow list with status filtering and cursor navigation, and a deep-linked workflow detail
+view. Detail pages show the current snapshot and an oldest-to-newest event chronology with
+actor, attempt and time. Missing and unauthorized workflows deliberately share one unavailable
+message so the client does not turn access failures into an existence oracle. Loading, empty,
+error and retry states are explicit.
+
+The response parser validates UUIDs, statuses, timestamps, numeric fields and agreement between
+the current status and final history event at runtime before rendering; TypeScript types alone
+do not make network JSON trustworthy. Semantic headings and tables, ordered event lists, live
+status regions, visible focus styles and labeled navigation provide the accessibility contract.
 
 For local development, start the API on port 8000 and run:
 
@@ -169,11 +174,12 @@ npm run dev
 ```
 
 Vite proxies `/workflows` to `http://127.0.0.1:8000`. A production build assumes the UI and
-API share an origin or that an external reverse proxy routes `/workflows` to FastAPI. The raw
-token is held only in React component memory: it is not persisted, refreshed or issued by the
-client, and a page reload signs out. This reduces browser persistence but is not a complete
-identity system or protection against script injection. The UI currently lists workflows;
-detail history and transition controls remain backend-only.
+API share an origin or that an external reverse proxy routes `/workflows` to FastAPI. Because
+detail navigation uses real `/workflows/{id}` URLs and the browser history API, production
+hosting must also fall back to `index.html` for those UI deep links. The raw token is held only
+in React component memory: it is not persisted, refreshed or issued by the client, and a page
+reload signs out before showing a detail. This reduces browser persistence but is not a complete
+identity system or protection against script injection. Transition controls remain backend-only.
 
 ## Try the API
 

@@ -1,10 +1,24 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 
+import { WorkflowDetailView } from "./WorkflowDetail";
 import { WorkflowList } from "./WorkflowList";
+
+const DETAIL_PATH = /^\/workflows\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/?$/i;
+
+function detailIdFromLocation(): string | null {
+  return window.location.pathname.match(DETAIL_PATH)?.[1] ?? null;
+}
 
 export function App() {
   const [token, setToken] = useState("");
   const [draft, setDraft] = useState("");
+  const [workflowId, setWorkflowId] = useState(detailIdFromLocation);
+
+  useEffect(() => {
+    const onPopState = () => setWorkflowId(detailIdFromLocation());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -13,10 +27,22 @@ export function App() {
   }
 
   if (token) {
-    return <WorkflowList token={token} onSignOut={() => {
+    const signOut = () => {
       setToken("");
       setDraft("");
-    }} />;
+    };
+    if (workflowId) {
+      return <WorkflowDetailView token={token} workflowId={workflowId}
+        onBack={() => {
+          window.history.pushState(null, "", "/");
+          setWorkflowId(null);
+        }} onSignOut={signOut} />;
+    }
+    return <WorkflowList token={token} onSignOut={signOut}
+      onOpenWorkflow={(id) => {
+        window.history.pushState(null, "", `/workflows/${id}`);
+        setWorkflowId(id);
+      }} />;
   }
 
   return (

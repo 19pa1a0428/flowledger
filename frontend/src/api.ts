@@ -25,6 +25,24 @@ export interface WorkflowPage {
   next_cursor: string | null;
 }
 
+export interface WorkflowEvent {
+  status: WorkflowStatus;
+  occurred_at: string;
+  attempt: number;
+  actor_id: string;
+}
+
+export interface WorkflowDetail {
+  id: string;
+  name: string;
+  owner_id: string;
+  status: WorkflowStatus;
+  attempts: number;
+  max_attempts: number;
+  version: number;
+  events: WorkflowEvent[];
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -81,6 +99,49 @@ function parseSummary(value: unknown): WorkflowSummary {
   };
 }
 
+function parseEvent(value: unknown): WorkflowEvent {
+  if (!isRecord(value)) throw new Error("Invalid workflow response: event");
+  const status = requiredString(value, "status");
+  const occurredAt = requiredString(value, "occurred_at");
+  if (!WORKFLOW_STATUSES.includes(status as WorkflowStatus)) {
+    throw new Error("Invalid workflow response: event status");
+  }
+  if (Number.isNaN(Date.parse(occurredAt))) {
+    throw new Error("Invalid workflow response: event timestamp");
+  }
+  return {
+    status: status as WorkflowStatus,
+    occurred_at: occurredAt,
+    attempt: requiredInteger(value, "attempt"),
+    actor_id: requiredString(value, "actor_id"),
+  };
+}
+
+export function parseWorkflowDetail(value: unknown): WorkflowDetail {
+  if (!isRecord(value) || !Array.isArray(value.events)) {
+    throw new Error("Invalid workflow response: detail");
+  }
+  const id = requiredString(value, "id");
+  const status = requiredString(value, "status");
+  if (!UUID.test(id) || !WORKFLOW_STATUSES.includes(status as WorkflowStatus)) {
+    throw new Error("Invalid workflow response: identity or status");
+  }
+  const events = value.events.map(parseEvent);
+  if (events.length === 0 || events.at(-1)?.status !== status) {
+    throw new Error("Invalid workflow response: event history");
+  }
+  return {
+    id,
+    name: requiredString(value, "name"),
+    owner_id: requiredString(value, "owner_id"),
+    status: status as WorkflowStatus,
+    attempts: requiredInteger(value, "attempts"),
+    max_attempts: requiredInteger(value, "max_attempts"),
+    version: requiredInteger(value, "version"),
+    events,
+  };
+}
+
 export function parseWorkflowPage(value: unknown): WorkflowPage {
   if (!isRecord(value) || !Array.isArray(value.items)) {
     throw new Error("Invalid workflow response: page");
@@ -125,4 +186,28 @@ export async function fetchWorkflows({
     throw new ApiError(message, response.status);
   }
   return parseWorkflowPage(await response.json());
+}
+
+export async function fetchWorkflow(
+  token: string,
+  workflowId: string,
+  signal?: AbortSignal,
+  fetcher: typeof fetch = fetch,
+): Promise<WorkflowDetail> {
+  if (!UUID.test(workflowId)) throw new Error("Invalid workflow ID");
+  const response = await fetcher(`/workflows/${workflowId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal,
+  });
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const body: unknown = await response.json();
+      if (isRecord(body) && typeof body.detail === "string") message = body.detail;
+    } catch {
+      // Preserve the status-based fallback when the server did not return JSON.
+    }
+    throw new ApiError(message, response.status);
+  }
+  return parseWorkflowDetail(await response.json());
 }

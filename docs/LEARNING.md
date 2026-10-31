@@ -1,5 +1,47 @@
 # Learning journal
 
+## 2026-10-30 — Workflow detail and event chronology
+
+Assistance: AI-assisted client contract parsing, deep-link navigation, accessibility tests and
+documentation.
+
+Added a workflow detail view backed by the existing owner-aware `GET /workflows/{id}` contract.
+Workflow names are real links, navigation updates browser history without a router dependency,
+and back/forward navigation restores list or detail state. The detail page presents current
+status, ownership, retry/version metadata and an oldest-to-newest ordered event history with
+actor, attempt and semantic timestamps.
+
+The client validates the detail response at the network boundary, including UUID, domain status,
+nonnegative counters, event timestamps and agreement between the snapshot status and final event.
+A `404` always becomes the same "not found or unavailable" presentation, preserving the API's
+non-enumerating ownership policy. Requests abort when the view changes, and other failures retain
+an explicit retry path. Tests cover detail parsing and mismatch rejection, authenticated fetches,
+link navigation, accessible chronology and generic unavailable handling.
+
+Validation: Vitest 5.0.5 ran nine frontend tests across three files and all passed. TypeScript
+7.0.2 and Vite 8.3.5 produced a production bundle successfully (19 transformed modules;
+201.10 kB JavaScript and 3.85 kB CSS before gzip). Python 3.12 ran 112 tests locally:
+91 passed and 21 live Redis variants were skipped because no disposable Redis URL was configured.
+The preceding workflow-list commit's GitHub Actions run completed successfully on 2026-10-29.
+No deployed browser or end-to-end result is claimed.
+
+Limits: the lightweight history navigation is intentionally not a general-purpose router.
+Production hosting must serve `index.html` for detail deep links, and reloading signs out because
+the bearer token is memory-only. There are no transition controls, token issuance/refresh,
+automated browser test or deployed environment yet.
+
+Exercise: open a synthetic workflow from the list, use the browser Back and Forward buttons,
+then request an unknown UUID and confirm the UI reveals no ownership or existence distinction.
+
+Interview question: Why should missing and unauthorized workflow details use the same client
+message?
+
+Answer outline: different messages or timing can reveal that a protected identifier exists.
+Collapsing both cases preserves the server's non-enumeration policy; internal logs and audit data
+can retain the precise reason without exposing it to the caller.
+
+Next: add state-aware operator transition controls with expected-version conflict recovery.
+
 ## 2026-10-29 — React workflow list foundation
 
 Assistance: AI-assisted frontend architecture, runtime contract parsing, accessibility tests,

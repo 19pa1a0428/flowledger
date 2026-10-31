@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ApiError, fetchWorkflows, parseWorkflowPage } from "./api";
+import {
+  ApiError,
+  fetchWorkflow,
+  fetchWorkflows,
+  parseWorkflowDetail,
+  parseWorkflowPage,
+} from "./api";
 
 const item = {
   id: "123e4567-e89b-42d3-a456-426614174000",
@@ -42,5 +48,28 @@ describe("workflow API", () => {
     await expect(fetchWorkflows({ token: "bad-token", fetcher })).rejects.toEqual(
       new ApiError("Not authenticated", 401),
     );
+  });
+
+  it("parses detail history and rejects a snapshot/history mismatch", () => {
+    const detail = { ...item, events: [{
+      status: "pending", occurred_at: item.created_at, attempt: 0,
+      actor_id: "synthetic-viewer",
+    }] };
+    expect(parseWorkflowDetail(detail).events).toHaveLength(1);
+    expect(() => parseWorkflowDetail({ ...detail, status: "running" }))
+      .toThrow("event history");
+  });
+
+  it("fetches one workflow with the bearer token", async () => {
+    const detail = { ...item, events: [{
+      status: "pending", occurred_at: item.created_at, attempt: 0,
+      actor_id: "synthetic-viewer",
+    }] };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(
+      JSON.stringify(detail), { status: 200 },
+    ));
+    await fetchWorkflow("synthetic-token", item.id, undefined, fetcher);
+    expect(fetcher).toHaveBeenCalledWith(`/workflows/${item.id}`,
+      expect.objectContaining({ headers: { Authorization: "Bearer synthetic-token" } }));
   });
 });
