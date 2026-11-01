@@ -211,3 +211,38 @@ export async function fetchWorkflow(
   }
   return parseWorkflowDetail(await response.json());
 }
+
+export async function transitionWorkflow(
+  token: string,
+  workflowId: string,
+  status: WorkflowStatus,
+  expectedVersion: number,
+  signal?: AbortSignal,
+  fetcher: typeof fetch = fetch,
+): Promise<WorkflowDetail> {
+  if (!UUID.test(workflowId)) throw new Error("Invalid workflow ID");
+  if (!WORKFLOW_STATUSES.includes(status) || !Number.isInteger(expectedVersion)
+      || expectedVersion < 0) {
+    throw new Error("Invalid workflow transition");
+  }
+  const response = await fetcher(`/workflows/${workflowId}/transitions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ status, expected_version: expectedVersion }),
+    signal,
+  });
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const body: unknown = await response.json();
+      if (isRecord(body) && typeof body.detail === "string") message = body.detail;
+    } catch {
+      // Preserve the status-based fallback when the server did not return JSON.
+    }
+    throw new ApiError(message, response.status);
+  }
+  return parseWorkflowDetail(await response.json());
+}

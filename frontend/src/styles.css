@@ -46,8 +46,17 @@ tbody th a { color: #174a35; }
 .badge.failed, .badge.cancelled { background: #f8dddd; color: #852828; }
 .state { margin: 1.5rem 0; border-radius: .75rem; padding: 1.2rem; background: #f0f4f1; }
 .state.error { background: #fff0f0; color: #7b2424; }
+.danger { background: #9b3434; }
+.danger:hover { background: #7d2727; }
 .pagination { justify-content: flex-end; }
 .summary { display: grid; gap: 1.5rem; grid-template-columns: minmax(180px, .6fr) 2fr; margin-bottom: 1.5rem; }
+.actions { display: grid; gap: 1rem; margin-bottom: 1.5rem; }
+.actions p { margin-bottom: 0; color: #5c6b63; }
+.action-buttons { display: flex; flex-wrap: wrap; gap: .75rem; }
+.action-feedback { border-radius: .65rem; padding: .8rem 1rem; }
+.action-feedback.success { background: #d7f2df; color: #145f31; }
+.action-feedback.error { background: #fff0f0; color: #7b2424; }
+.terminal-state { font-style: italic; }
 .summary dl, .timeline dl { display: grid; gap: 1rem; margin: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .summary dl > div, .timeline dl > div { min-width: 0; }
 dt { color: #718078; font-size: .76rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }

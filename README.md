@@ -165,6 +165,14 @@ the current status and final history event at runtime before rendering; TypeScri
 do not make network JSON trustworthy. Semantic headings and tables, ordered event lists, live
 status regions, visible focus styles and labeled navigation provide the accessibility contract.
 
+The detail view also presents state-aware operator actions. Each transition submits the version
+currently displayed, so a concurrent update returns `409` instead of being overwritten. On that
+response the client reloads the latest workflow and asks the operator to review it before trying
+again. Success and failure feedback is announced, controls are disabled while a request is in
+flight, terminal states have no actions, and retry is omitted when the attempt budget is spent.
+The bearer token is opaque, so the client does not infer its role; FastAPI remains authoritative
+and a viewer receives the existing generic operator-required response.
+
 For local development, start the API on port 8000 and run:
 
 ```bash
@@ -179,7 +187,7 @@ detail navigation uses real `/workflows/{id}` URLs and the browser history API, 
 hosting must also fall back to `index.html` for those UI deep links. The raw token is held only
 in React component memory: it is not persisted, refreshed or issued by the client, and a page
 reload signs out before showing a detail. This reduces browser persistence but is not a complete
-identity system or protection against script injection. Transition controls remain backend-only.
+identity system or protection against script injection.
 
 ## Try the API
 

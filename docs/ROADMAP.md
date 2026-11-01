@@ -60,8 +60,10 @@ will produce a finished feature. Work progresses only when the preceding increme
     loading/empty/error/retry states, accessibility checks and an independent CI build/test job.
 19. DONE: Add the workflow detail/history view with typed parsing, non-enumerating access
     handling, browser-history deep links and accessible oldest-to-newest event chronology.
-20. NEXT: Add operator transition controls with expected-version conflict recovery,
+20. DONE: Add operator transition controls with expected-version conflict recovery,
     state-aware actions and accessible confirmation and error feedback.
+21. NEXT: Add OpenTelemetry instrumentation with correlated API and worker spans,
+    fail-safe configuration and deterministic telemetry contract tests.
 
 ## Working cadence
 

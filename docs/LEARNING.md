@@ -1,5 +1,46 @@
 # Learning journal
 
+## 2026-10-31 — Version-safe operator transitions
+
+Assistance: AI-assisted transition UX, optimistic-conflict recovery, accessibility tests and
+documentation.
+
+Added operator actions to workflow detail without duplicating domain authority in the browser.
+The UI derives available actions from the loaded state, removes retry after the attempt budget is
+spent and shows no controls for terminal states. Each request includes the displayed workflow
+version and remains protected by the API's operator role check. Because bearer tokens are opaque,
+the client labels the controls as operator-only but does not guess a role from token contents.
+
+A successful transition replaces the snapshot and chronology with the server response and
+announces the new state. A `409` triggers a fresh detail read and asks the operator to review the
+new state before acting again; it never silently retries a stale write. A `403` receives a clear
+operator-role message. Buttons are disabled in flight, destructive outcomes are visually distinct,
+and success and failure feedback uses live status and alert semantics.
+
+Validation: Vitest 5.0.5 ran 12 frontend tests across three files and all passed. TypeScript
+7.0.2 and Vite 8.3.5 produced a production bundle successfully (19 transformed modules;
+203.59 kB JavaScript and 4.26 kB CSS before gzip). Python 3.12 ran 112 tests locally:
+91 passed and 21 live Redis variants were skipped because no disposable Redis URL was configured.
+The preceding detail-view GitHub Actions run completed successfully on 2026-10-31. No
+deployed-browser or end-to-end result is claimed.
+
+Limits: action visibility is not proof of authorization; FastAPI remains authoritative. Conflict
+recovery refreshes the whole detail rather than merging events locally. There is no confirmation
+dialog for destructive actions, undo operation, browser automation or deployed environment.
+
+Exercise: open the same synthetic running workflow in two sessions, mark it failed in one, then
+try to mark it succeeded from the stale session. Confirm the stale session loads `failed`, shows
+the conflict message and does not overwrite the newer event.
+
+Interview question: Why should an optimistic-concurrency conflict refresh state instead of
+automatically retrying the transition?
+
+Answer outline: the operator approved an action against a specific state and version. A concurrent
+change may make that intent invalid or unsafe; refreshing preserves the newer write and requires
+the human to review current state before issuing a new command.
+
+Next: instrument correlated API and worker operations with OpenTelemetry and deterministic tests.
+
 ## 2026-10-30 — Workflow detail and event chronology
 
 Assistance: AI-assisted client contract parsing, deep-link navigation, accessibility tests and

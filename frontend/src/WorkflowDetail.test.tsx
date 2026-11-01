@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkflowDetailView } from "./WorkflowDetail";
@@ -44,5 +44,42 @@ describe("WorkflowDetailView", () => {
       onBack={() => undefined} onSignOut={() => undefined} />);
     expect((await screen.findByRole("alert")).textContent)
       .toContain("Workflow not found or unavailable.");
+  });
+
+  it("offers state-aware actions and confirms a successful transition", async () => {
+    const succeeded = { ...detail, status: "succeeded", version: 2, events: [
+      ...detail.events,
+      { status: "succeeded", occurred_at: "2026-10-30T20:02:00Z", attempt: 1,
+        actor_id: "synthetic-operator" },
+    ] };
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify(detail), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(succeeded), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<WorkflowDetailView token="synthetic-token" workflowId={id}
+      onBack={() => undefined} onSignOut={() => undefined} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Mark succeeded" }));
+    expect((await screen.findByRole("status")).textContent)
+      .toContain("Workflow moved to succeeded.");
+    expect(screen.getByText("No actions are available for this state.")).toBeTruthy();
+  });
+
+  it("reloads the latest state after an optimistic conflict", async () => {
+    const latest = { ...detail, status: "failed", version: 2, events: [
+      ...detail.events,
+      { status: "failed", occurred_at: "2026-10-30T20:02:00Z", attempt: 1,
+        actor_id: "other-operator" },
+    ] };
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify(detail), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "Version conflict" }),
+        { status: 409 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(latest), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<WorkflowDetailView token="synthetic-token" workflowId={id}
+      onBack={() => undefined} onSignOut={() => undefined} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Mark succeeded" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Latest state loaded");
+    expect(screen.getByRole("button", { name: "Retry workflow" })).toBeTruthy();
   });
 });

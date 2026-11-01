@@ -6,6 +6,7 @@ import {
   fetchWorkflows,
   parseWorkflowDetail,
   parseWorkflowPage,
+  transitionWorkflow,
 } from "./api";
 
 const item = {
@@ -71,5 +72,26 @@ describe("workflow API", () => {
     await fetchWorkflow("synthetic-token", item.id, undefined, fetcher);
     expect(fetcher).toHaveBeenCalledWith(`/workflows/${item.id}`,
       expect.objectContaining({ headers: { Authorization: "Bearer synthetic-token" } }));
+  });
+
+  it("submits a transition with the displayed optimistic version", async () => {
+    const detail = { ...item, status: "running", attempts: 1, version: 1, events: [
+      { status: "pending", occurred_at: item.created_at, attempt: 0,
+        actor_id: "synthetic-operator" },
+      { status: "running", occurred_at: item.updated_at, attempt: 1,
+        actor_id: "synthetic-operator" },
+    ] };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(
+      JSON.stringify(detail), { status: 200 },
+    ));
+    await transitionWorkflow("synthetic-token", item.id, "running", 0, undefined, fetcher);
+    expect(fetcher).toHaveBeenCalledWith(`/workflows/${item.id}/transitions`,
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          Authorization: "Bearer synthetic-token", "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: "running", expected_version: 0 }),
+      }));
   });
 });
