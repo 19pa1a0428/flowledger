@@ -6,6 +6,8 @@ from typing import Protocol
 from flowledger.claims import MalformedCommandQuarantined, RedisClaimQueue
 from flowledger.jobs import SubmissionConflict
 from flowledger.repository import SqlAlchemyRepository
+from flowledger.telemetry import extracted_context, tracer
+from opentelemetry.trace import SpanKind, Status as SpanStatus, StatusCode, Tracer
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 
@@ -44,7 +46,7 @@ class WorkerLoopStats:
 
 
 def run_once(queue: RedisClaimQueue, repository: SqlAlchemyRepository,
-             lease_ms: int = 30_000) -> bool:
+             lease_ms: int = 30_000, worker_tracer: Tracer | None = None) -> bool:
     """Commit before acknowledgement; back off reported database failures.
 
     False means idle. An expired acknowledgement is safe: redelivery checks the
@@ -57,17 +59,32 @@ def run_once(queue: RedisClaimQueue, repository: SqlAlchemyRepository,
         return True
     if claim is None:
         return False
-    try:
-        repository.execute(claim.command, reject_invalid=True)
-    except (OperationalError, IntegrityError):
-        # execute has exited its transaction and rolled back. Do not retry within
-        # a failed session, acknowledge failed work, or sleep holding a claim.
-        queue.retry(claim.token)
-        return True
-    except SubmissionConflict:
-        queue.quarantine(claim.token, "command_id_conflict")
-        return True
-    queue.acknowledge(claim.token)
+    worker_tracer = worker_tracer or tracer("flowledger.worker")
+    context = extracted_context(claim.command.traceparent, claim.command.tracestate)
+    with worker_tracer.start_as_current_span(
+        "worker.execute", context=context, kind=SpanKind.CONSUMER,
+        attributes={
+            "flowledger.command_id": str(claim.command.command_id),
+            "flowledger.workflow_id": str(claim.command.workflow_id),
+            "flowledger.expected_version": claim.command.expected_version,
+            "flowledger.target": claim.command.target.value,
+        },
+    ) as span:
+        try:
+            repository.execute(claim.command, reject_invalid=True)
+        except (OperationalError, IntegrityError) as error:
+            span.record_exception(error)
+            span.set_status(SpanStatus(StatusCode.ERROR, "database retry scheduled"))
+            # execute has exited its transaction and rolled back. Do not retry within
+            # a failed session, acknowledge failed work, or sleep holding a claim.
+            queue.retry(claim.token)
+            return True
+        except SubmissionConflict as error:
+            span.record_exception(error)
+            span.set_status(SpanStatus(StatusCode.ERROR, "command quarantined"))
+            queue.quarantine(claim.token, "command_id_conflict")
+            return True
+        queue.acknowledge(claim.token)
     return True
 
 

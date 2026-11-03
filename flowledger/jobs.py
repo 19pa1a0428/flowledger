@@ -1,7 +1,7 @@
 """Validated commands and atomic Redis submission, not job execution."""
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from redis import Redis
 
 from flowledger.domain import Status
@@ -14,6 +14,32 @@ class WorkerCommand(BaseModel):
     workflow_id: UUID
     expected_version: int = Field(ge=0, strict=True)
     target: Status = Status.RUNNING
+    traceparent: str | None = Field(default=None, min_length=55, max_length=55)
+    tracestate: str | None = Field(default=None, min_length=1, max_length=512)
+
+    @field_validator("traceparent")
+    @classmethod
+    def validate_traceparent(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parts = value.split("-")
+        if (len(parts) != 4 or parts[0] != "00"
+                or any(character not in "0123456789abcdef"
+                       for part in parts for character in part)
+                or len(parts[1]) != 32 or len(parts[2]) != 16 or len(parts[3]) != 2
+                or int(parts[1], 16) == 0 or int(parts[2], 16) == 0):
+            raise ValueError("Invalid W3C traceparent")
+        return value
+
+    @field_validator("tracestate")
+    @classmethod
+    def validate_tracestate(cls, value: str | None) -> str | None:
+        if value is not None and (
+            value != value.strip()
+            or any(ord(character) < 32 or ord(character) > 126 for character in value)
+        ):
+            raise ValueError("Invalid W3C tracestate")
+        return value
 
 
 class SubmissionConflict(ValueError):

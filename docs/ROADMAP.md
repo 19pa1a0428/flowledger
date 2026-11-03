@@ -62,8 +62,11 @@ will produce a finished feature. Work progresses only when the preceding increme
     handling, browser-history deep links and accessible oldest-to-newest event chronology.
 20. DONE: Add operator transition controls with expected-version conflict recovery,
     state-aware actions and accessible confirmation and error feedback.
-21. NEXT: Add OpenTelemetry instrumentation with correlated API and worker spans,
-    fail-safe configuration and deterministic telemetry contract tests.
+21. DONE: Add OpenTelemetry instrumentation with W3C context persisted through the
+    transactional outbox, correlated API/worker spans, fail-safe opt-in OTLP configuration
+    and deterministic telemetry contract tests.
+22. NEXT: Build a reproducible PostgreSQL workload and query-plan baseline for workflow
+    listing and audit history, then add and measure an index only where evidence supports it.
 
 ## Working cadence
 

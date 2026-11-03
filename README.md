@@ -205,6 +205,30 @@ The transition body is shaped like
 the returned `version` for the next request; on `409`, fetch the latest workflow before
 deciding whether to retry.
 
+## OpenTelemetry tracing
+
+Tracing is disabled by default. Enable OTLP/HTTP export independently in each API and worker
+process; an absent or invalid optional exporter configuration is logged and does not prevent
+business operations from starting:
+
+```bash
+export FLOWLEDGER_OTEL_ENABLED=true
+export FLOWLEDGER_OTEL_ENDPOINT=http://localhost:4318/v1/traces
+export FLOWLEDGER_OTEL_SERVICE_NAME=flowledger-api  # use flowledger-worker in the worker process
+```
+
+API spans use bounded route-template names such as `HTTP POST /workflows/{workflow_id}` and
+accept an incoming W3C `traceparent`. Workflow creation atomically stores its initial worker
+command and the current `traceparent`/`tracestate` in the outbox. The relay submits that exact
+payload without regenerating context, and `worker.execute` extracts it as a consumer span. This
+keeps API and worker work in one trace while preserving the stable payload required for command-ID
+deduplication after relay crashes. Spans include command/workflow IDs, expected version and target;
+tokens and workflow names are deliberately excluded.
+
+No collector is bundled and no live export is claimed. Export uses a background batch processor;
+telemetry loss or exporter failure must not change workflow results. Configure standard
+OpenTelemetry sampler variables when production volume requires sampling.
+
 ## Redis command submission
 
 `flowledger.jobs.WorkerCommand` carries a schema version, command UUID, workflow
@@ -276,9 +300,9 @@ explicitly skipped. These checks cover retry scheduling as well as claims.
 
 ## Transactional outbox
 
-After `python -m alembic upgrade head`, a new workflow can atomically retain its
-initial command for later Redis delivery. This is currently a library interface;
-the HTTP creation route does not schedule commands. Worker polling is a separate library call.
+After `python -m alembic upgrade head`, the HTTP workflow-creation route atomically retains its
+initial command for later Redis delivery. The relay and worker polling remain separate library
+calls, so creating a workflow does not require Redis availability or execute the transition inline.
 
 ```python
 from sqlalchemy import create_engine
@@ -295,7 +319,8 @@ relay_pending(sessions, queue, limit=100)
 ```
 
 The command must reference the new workflow and its version and request a valid
-transition. Creation does not execute that transition. The snapshot, initial event,
+transition. The example above is the lower-level equivalent of HTTP creation; creation does not
+execute that transition. The snapshot, initial event,
 and outbox row commit together. The relay marks delivery only after Redis accepts
 the command or recognizes an identical receipt. A failure leaves durable pending
 intent; a crash after Redis acceptance is replayed using the same command ID.

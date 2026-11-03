@@ -1,5 +1,50 @@
 # Learning journal
 
+## 2026-11-02 — Durable API-to-worker trace correlation
+
+Assistance: AI-assisted OpenTelemetry boundary design, context-propagation tests, safe
+configuration and documentation.
+
+Added opt-in OpenTelemetry SDK and OTLP/HTTP export without adding a new service boundary.
+FastAPI requests create server spans, honor incoming W3C context and use bounded route-template
+names. Workflow creation now atomically stores the initial worker command alongside the snapshot
+and event. The command captures `traceparent` and optional `tracestate`; the worker extracts them
+to create a correlated consumer span with command ID, workflow ID, expected version and target.
+Bearer tokens and workflow names are not span attributes.
+
+Trace context is generated once before the outbox commit and remains part of the stable command
+payload through relay, retries and recovery. Regenerating it in the relay would make a crash replay
+look like a changed payload for the same command ID and violate deduplication. A deterministic
+in-memory exporter test proves the stored outbox bytes equal the Redis bytes, the worker performs
+the transition and its span has the API span as parent in the same trace. Invalid trace headers
+fail command validation.
+
+Validation: Python 3.12 ran 114 tests locally: 93 passed and 21 live Redis variants were skipped
+because no disposable Redis URL was configured. The two new telemetry tests cover end-to-end
+context continuity and missing optional-exporter configuration. Vitest 5.0.5 ran all 12 frontend
+tests successfully; TypeScript 7.0.2 and Vite 8.3.5 produced the unchanged production bundle
+(19 transformed modules; 203.59 kB JavaScript and 4.26 kB CSS before gzip). The preceding
+operator-action GitHub Actions run completed successfully. No collector, live OTLP export,
+production trace volume or performance result is claimed.
+
+Limits: the project does not bundle a collector or tracing backend. Export is deliberately off by
+default and uses process-local batch buffers, so abrupt termination can lose spans. Outbox relay
+and Redis operation spans are not yet modeled separately, and trace context is observational—not
+an authorization or idempotency key.
+
+Exercise: run `python -m unittest tests.test_telemetry.TelemetryTests.test_api_context_survives_outbox_and_parents_worker_span -v`, then inspect the assertions that
+compare stored/queued payloads, trace IDs and the worker parent span.
+
+Interview question: Why persist trace context once in the outbox command instead of generating a
+new trace parent each time the relay retries?
+
+Answer outline: the outbox payload and command ID form the deduplication identity. Changing trace
+context on retry changes the payload, creates a false conflict and fragments one operation across
+traces. Persisting context atomically makes replay observability stable without altering delivery
+semantics.
+
+Next: establish a reproducible PostgreSQL workload and measure query plans before adding indexes.
+
 ## 2026-10-31 — Version-safe operator transitions
 
 Assistance: AI-assisted transition UX, optimistic-conflict recovery, accessibility tests and

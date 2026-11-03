@@ -62,6 +62,9 @@ class SubmissionTests(unittest.TestCase):
         valid = self.command.model_dump(mode="json")
         for field, value in [("schema_version", 2), ("expected_version", True),
                              ("expected_version", -1), ("command_id", "bad"),
-                             ("target", "email_everyone"), ("extra", 1)]:
+                             ("target", "email_everyone"),
+                             ("traceparent", "00-invalid-trace"), ("extra", 1)]:
             with self.subTest(field=field, value=value), self.assertRaises(ValidationError):
                 WorkerCommand.model_validate({**valid, field: value})
+        with self.assertRaises(ValidationError):
+            WorkerCommand.model_validate({**valid, "tracestate": "vendor=value\nforged"})

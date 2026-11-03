@@ -1,7 +1,7 @@
 """HTTP boundary for the workflow domain. Synthetic local demo only."""
 from datetime import datetime
 import os
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -10,7 +10,10 @@ from sqlalchemy import create_engine
 
 from flowledger.auth import Principal, Role, TokenAuthenticator
 from flowledger.domain import InvalidTransition, Status, Workflow
+from flowledger.jobs import WorkerCommand
 from flowledger.repository import ConcurrencyConflict, SqlAlchemyRepository, build_session_factory
+from flowledger.telemetry import current_trace_headers, extracted_context, tracer
+from opentelemetry.trace import SpanKind, Status as SpanStatus, StatusCode, Tracer
 
 
 class CreateWorkflow(BaseModel):
@@ -91,7 +94,8 @@ class AuditPageResponse(BaseModel):
 
 
 def create_app(repository: SqlAlchemyRepository | None = None,
-               authenticator: TokenAuthenticator | None = None) -> FastAPI:
+               authenticator: TokenAuthenticator | None = None,
+               request_tracer: Tracer | None = None) -> FastAPI:
     app = FastAPI(title="FlowLedger", version="0.4.0")
     authenticator = authenticator or TokenAuthenticator.from_json(
         os.getenv("FLOWLEDGER_AUTH_TOKENS")
@@ -104,6 +108,32 @@ def create_app(repository: SqlAlchemyRepository | None = None,
         repository = SqlAlchemyRepository(build_session_factory(create_engine(database_url)))
 
     bearer = HTTPBearer(auto_error=False)
+    request_tracer = request_tracer or tracer("flowledger.api")
+
+    @app.middleware("http")
+    async def trace_request(request, call_next):
+        parent = extracted_context(
+            request.headers.get("traceparent"), request.headers.get("tracestate")
+        )
+        with request_tracer.start_as_current_span(
+            f"HTTP {request.method}", context=parent, kind=SpanKind.SERVER,
+        ) as span:
+            span.set_attribute("http.request.method", request.method)
+            span.set_attribute("url.path", request.url.path)
+            try:
+                response = await call_next(request)
+            except Exception as error:
+                span.record_exception(error)
+                span.set_status(SpanStatus(StatusCode.ERROR))
+                raise
+            route = request.scope.get("route")
+            route_path = getattr(route, "path", request.url.path)
+            span.update_name(f"HTTP {request.method} {route_path}")
+            span.set_attribute("http.route", route_path)
+            span.set_attribute("http.response.status_code", response.status_code)
+            if response.status_code >= 500:
+                span.set_status(SpanStatus(StatusCode.ERROR))
+            return response
 
     def current_principal(
         credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
@@ -137,10 +167,17 @@ def create_app(repository: SqlAlchemyRepository | None = None,
     @app.post("/workflows", status_code=201, response_model=WorkflowResponse)
     def create_workflow(body: CreateWorkflow, response: Response,
                         principal: Principal = Depends(require_operator)):
-        workflow = repository.add(Workflow.create(
+        workflow = Workflow.create(
             body.name, body.max_attempts, owner_id=principal.subject,
             actor_id=principal.subject,
-        ))
+        )
+        traceparent, tracestate = current_trace_headers()
+        command = WorkerCommand(
+            command_id=uuid4(), workflow_id=workflow.id,
+            expected_version=workflow.version,
+            traceparent=traceparent, tracestate=tracestate,
+        )
+        workflow = repository.add(workflow, command)
         response.headers["Location"] = f"/workflows/{workflow.id}"
         return workflow
 
