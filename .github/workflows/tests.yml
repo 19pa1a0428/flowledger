@@ -44,4 +44,31 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+  postgres-plans:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: flowledger_test
+          POSTGRES_USER: flowledger
+          POSTGRES_PASSWORD: flowledger
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flowledger -d flowledger_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      FLOWLEDGER_DATABASE_URL: postgresql+psycopg://flowledger:flowledger@localhost:5432/flowledger_test
+      FLOWLEDGER_TEST_POSTGRES_URL: postgresql+psycopg://flowledger:flowledger@localhost:5432/flowledger_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[test]"
+      - run: python -m alembic upgrade head
+      - run: python scripts/measure_query_plans.py --confirm-disposable
 
