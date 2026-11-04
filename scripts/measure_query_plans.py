@@ -28,8 +28,6 @@ LIMIT 51
 CANDIDATE_INDEXES = (
     "CREATE INDEX ix_workflows_owner_status_created_id "
     "ON workflows (owner_id, status, created_at DESC, id DESC)",
-    "CREATE INDEX ix_workflow_events_actor_status_id "
-    "ON workflow_events (actor_id, status, id DESC)",
 )
 
 
@@ -103,9 +101,7 @@ def seed(cursor, workflow_count: int) -> None:
 def measure(database_url: str, workflow_count: int) -> dict[str, Any]:
     database_url = database_url.replace("postgresql+psycopg://", "postgresql://", 1)
     with psycopg.connect(database_url) as connection, connection.cursor() as cursor:
-        for name in ("ix_workflows_owner_status_created_id",
-                     "ix_workflow_events_actor_status_id"):
-            cursor.execute(f"DROP INDEX IF EXISTS {name}")
+        cursor.execute("DROP INDEX IF EXISTS ix_workflows_owner_status_created_id")
         seed(cursor, workflow_count)
         baseline = {
             "workflow_list": explain(cursor, WORKFLOW_QUERY, ("owner-7", "running")),
@@ -119,17 +115,21 @@ def measure(database_url: str, workflow_count: int) -> dict[str, Any]:
             "workflow_list": explain(cursor, WORKFLOW_QUERY, ("owner-7", "running")),
             "audit_history": explain(cursor, AUDIT_QUERY, ("worker", "running")),
         }
-        for name in baseline:
-            if not any("Index" in node for node in candidate[name]["node_types"]):
-                raise RuntimeError(f"Candidate {name} plan did not use an index")
-            if candidate[name]["total_cost"] >= baseline[name]["total_cost"]:
-                raise RuntimeError(f"Candidate {name} plan cost did not improve")
+        workflow_candidate = candidate["workflow_list"]
+        if not any("Index" in node for node in workflow_candidate["node_types"]):
+            raise RuntimeError("Candidate workflow-list plan did not use an index")
+        if workflow_candidate["total_cost"] >= baseline["workflow_list"]["total_cost"]:
+            raise RuntimeError("Candidate workflow-list plan cost did not improve")
         connection.rollback()  # Leave the disposable migrated schema empty and unchanged.
     return {
         "workflow_count": workflow_count,
         "event_count": workflow_count * 3,
         "baseline": baseline,
         "candidate": candidate,
+        "decision": {
+            "workflow_list": "add composite owner/status/order index",
+            "audit_history": "retain existing primary-key plan; candidate did not improve cost",
+        },
     }
 
 

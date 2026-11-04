@@ -65,8 +65,11 @@ will produce a finished feature. Work progresses only when the preceding increme
 21. DONE: Add OpenTelemetry instrumentation with W3C context persisted through the
     transactional outbox, correlated API/worker spans, fail-safe opt-in OTLP configuration
     and deterministic telemetry contract tests.
-22. NEXT: Build a reproducible PostgreSQL workload and query-plan baseline for workflow
-    listing and audit history, then add and measure an index only where evidence supports it.
+22. DONE: Build a reproducible PostgreSQL 17 workload and query-plan baseline for workflow
+    listing and audit history. Add a reversible composite workflow-list index after lower planner
+    cost and index use were demonstrated; omit the audit candidate because cost did not improve.
+23. NEXT: Add Docker Compose for the modular API, PostgreSQL, Redis, relay and worker processes,
+    with health checks, migrations and a documented local recovery workflow.
 
 ## Working cadence
 

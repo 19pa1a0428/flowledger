@@ -1,5 +1,47 @@
 # Learning journal
 
+## 2026-11-03 — Evidence-led PostgreSQL indexing
+
+Assistance: AI-assisted synthetic workload design, query-plan parsing, CI integration, migration
+design and documentation.
+
+Added an explicitly destructive, disposable-only PostgreSQL 17 harness that migrates the real
+schema, inserts 20,000 deterministic workflows and 60,000 events, and captures structured
+`EXPLAIN (ANALYZE, BUFFERS)` results for owner/status workflow listing and actor/status audit
+history. The harness reports node types, planner cost, planning/execution time and shared buffer
+activity. Only index use and lower planner cost are gates; wall-clock time is observational because
+shared CI runners and cache warming are noisy.
+
+The first CI attempt found that Alembic ignored `FLOWLEDGER_DATABASE_URL`; migration configuration
+now honors it while retaining the local default. The next measurement showed the composite
+`(owner_id, status, created_at DESC, id DESC)` workflow index reduced planner cost and was used,
+so reversible migration `20261103_07` adds it. The audit candidate did not improve planner cost
+and was omitted rather than manufacturing an optimization. CI retains the workload as a plan
+regression check.
+
+Validation: Python 3.12 ran 115 tests locally: 94 passed and 21 live Redis variants were skipped
+because no disposable Redis URL was configured. Migration upgrade/downgrade tests and the plan
+summary parser test passed locally. The PostgreSQL workload itself ran only in the disposable CI
+service; no local PostgreSQL server was available. Frontend code was unchanged; its CI test/build
+job passed during measurement. This is synthetic query-plan evidence, not production latency,
+throughput or user-volume evidence.
+
+Limits: the workload models two bounded read paths at one data distribution and does not cover
+write amplification, index bloat, autovacuum behavior or production cache patterns. Planner costs
+are estimates, not milliseconds. Re-run with representative distributions before extrapolating.
+
+Exercise: run the harness against a disposable PostgreSQL database with 5,000 then 50,000
+workflows and compare node types, total cost and buffer counts; never point it at retained data.
+
+Interview question: Why was the audit index omitted even though an index often sounds faster?
+
+Answer outline: indexes add write, storage and maintenance costs. The measured bounded audit plan
+already used the ordered primary-key path effectively, and the candidate did not lower planner
+cost. Add indexes for demonstrated access-path benefit, not by reflex.
+
+Next: package the modular API, PostgreSQL, Redis, relay and worker with Docker Compose and recovery
+instructions.
+
 ## 2026-11-02 — Durable API-to-worker trace correlation
 
 Assistance: AI-assisted OpenTelemetry boundary design, context-propagation tests, safe

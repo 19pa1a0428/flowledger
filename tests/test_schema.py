@@ -39,6 +39,8 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("ck_workflow_events_status", checks)
         self.assertIn("ck_workflows_owner_id", checks)
         self.assertIn("ck_workflow_events_actor_id", checks)
+        workflow_indexes = {item["name"] for item in inspector.get_indexes("workflows")}
+        self.assertIn("ix_workflows_owner_status_created_id", workflow_indexes)
 
     def test_migration_is_reversible(self):
         command.upgrade(self.config, "head")

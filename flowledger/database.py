@@ -2,7 +2,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text,
+                        UniqueConstraint, desc)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
 
@@ -31,6 +32,8 @@ class OutboxRecord(Base):
 class WorkflowRecord(Base):
     __tablename__ = "workflows"
     __table_args__ = (
+        Index("ix_workflows_owner_status_created_id", "owner_id", "status",
+              desc("created_at"), desc("id")),
         CheckConstraint("attempts >= 0", name="ck_workflows_attempts_nonnegative"),
         CheckConstraint("max_attempts BETWEEN 1 AND 100", name="ck_workflows_max_attempts_range"),
         CheckConstraint("attempts <= max_attempts", name="ck_workflows_attempts_within_limit"),
