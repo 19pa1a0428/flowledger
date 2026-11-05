@@ -3,7 +3,7 @@ from datetime import datetime
 import os
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import create_engine
@@ -149,6 +149,19 @@ def create_app(repository: SqlAlchemyRepository | None = None,
         if principal.role is not Role.OPERATOR:
             raise HTTPException(403, "Operator role required")
         return principal
+
+    @app.get("/health/live", include_in_schema=False)
+    def liveness():
+        return {"status": "ok"}
+
+    @app.get("/health/ready", include_in_schema=False)
+    def readiness(response: Response):
+        try:
+            repository.check_health()
+        except Exception:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            return {"status": "unavailable"}
+        return {"status": "ok"}
 
     @app.get("/audit/events", response_model=AuditPageResponse)
     def list_audit_events(

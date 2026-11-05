@@ -58,7 +58,33 @@ uvicorn flowledger.api:app --reload --host 127.0.0.1
 ```
 
 Do not use the checked-in example credentials outside local development. A later
-Docker increment will provide a reproducible local database environment.
+environment can run the modular processes together with Docker Compose.
+
+## Run the modular stack with Docker Compose
+
+Docker Compose reuses one Python image for the migration job, API, transactional-outbox
+relay and worker. PostgreSQL 17 and Redis 7.4 retain data in named volumes; Redis uses an
+append-only file. No microservice split or paid infrastructure is required.
+
+```bash
+cp .env.example .env
+docker compose up --build --detach --wait
+curl --fail http://127.0.0.1:8000/health/ready
+docker compose ps
+```
+
+The example bearer credential and database password are synthetic and local-only. The API
+binds to `127.0.0.1:8000`; send the example token from `.env.example` to exercise protected
+routes. `docker compose logs --follow api relay worker` shows process output, and
+`docker compose down` stops the stack without deleting data. See
+[the local recovery runbook](docs/RECOVERY.md) before backup, restore or a destructive
+`docker compose down --volumes` reset.
+
+The liveness endpoint reports that the API process can serve requests. The readiness endpoint
+also performs a database round trip and returns `503` without leaking the connection error when
+PostgreSQL is unavailable. These probes are intentionally unauthenticated and expose only a
+bounded status. The relay and worker let infrastructure errors terminate their process so
+Compose can restart them instead of hiding an unhealthy loop.
 
 ## Design
 

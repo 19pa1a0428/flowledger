@@ -1,6 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from flowledger.api import create_app
@@ -63,6 +64,18 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(workflow['events'][0]['actor_id'], 'synthetic-operator')
         self.assertTrue(workflow['events'][0]['occurred_at'].endswith('Z'))
         self.assertEqual(self.client.get(response.headers['Location']).json(), workflow)
+
+    def test_health_contract_does_not_require_authentication(self):
+        with TestClient(self.app) as anonymous:
+            self.assertEqual(anonymous.get('/health/live').json(), {'status': 'ok'})
+            response = anonymous.get('/health/ready')
+            self.assertEqual((response.status_code, response.json()),
+                             (200, {'status': 'ok'}))
+
+        with patch.object(self.repository, 'check_health', side_effect=RuntimeError('secret')):
+            response = self.client.get('/health/ready')
+        self.assertEqual((response.status_code, response.json()),
+                         (503, {'status': 'unavailable'}))
 
     def test_validation_rejects_bad_configuration(self):
         for body in ({}, {'name': ' '}, {'name': 12}, {'name': 'x' * 201},

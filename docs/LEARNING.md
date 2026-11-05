@@ -1,5 +1,53 @@
 # Learning journal
 
+## 2026-11-04 — Modular Docker Compose deployment
+
+Assistance: AI-assisted process packaging, readiness contracts, Compose smoke coverage,
+recovery analysis and documentation.
+
+Added one non-root Python image reused by the migration job, FastAPI API, transactional-outbox
+relay and worker rather than splitting the modular application into separate builds. Compose
+starts PostgreSQL 17 and append-only Redis 7.4 with named volumes and health checks, completes
+Alembic migrations before long-running processes, and binds the API only to localhost. New relay
+and worker entry points use bounded batches, graceful SIGINT/SIGTERM shutdown and fail-fast
+infrastructure errors so the supervisor can restart an unhealthy process.
+
+The API now has an unauthenticated liveness probe and a readiness probe that performs a database
+round trip. Readiness returns only a bounded unavailable status rather than connection details.
+CI validates Compose configuration, builds the image, waits for the stack, then creates a synthetic
+workflow and verifies the relay/worker move it from pending to running. The cleanup step always
+prints logs and removes disposable CI volumes.
+
+Validation: Python 3.12 ran 120 tests locally: 99 passed and 21 live Redis variants were skipped
+because no disposable Redis URL was configured. Four runtime tests cover batch draining, idle
+waiting, error propagation and bounded environment configuration; the API health contract covers
+ready, live and database-failure responses. Bytecode compilation and PostgreSQL offline migration
+generation passed. Vitest ran all 12 frontend tests and the TypeScript/Vite production build passed
+(19 transformed modules; 203.59 kB JavaScript and 4.26 kB CSS before gzip). Docker was unavailable
+in the local runtime, so no local Compose result is claimed; the new GitHub Actions smoke job must
+provide that evidence.
+
+Recovery boundary: PostgreSQL is authoritative, while Redis persists delivery state. A retained
+outbox row can be replayed after an ordinary outage, but losing Redis after an outbox row is marked
+delivered cannot currently be repaired automatically. The runbook documents logical PostgreSQL
+backup/restore, safe restart behavior, this Redis limitation and an explicitly destructive
+synthetic-data reset without pretending that local volumes are a production backup policy.
+
+Exercise: start the stack, create a synthetic workflow with the example operator token, and watch
+it reach `running`. Stop the worker, create another workflow, restart the worker and explain which
+state PostgreSQL and Redis each preserve.
+
+Interview question: Why use a one-shot migration service and database-backed readiness instead of
+running migrations in every API and worker process?
+
+Answer outline: one migration job serializes schema change before dependents start and makes failure
+visible. Multiple processes racing migrations complicate locking and failure diagnosis. Readiness
+then proves the API can reach the migrated database; liveness alone would only prove its process is
+running. Production still needs a deployment lock/strategy for multiple hosts and backward-compatible
+migrations.
+
+Next: add deployment quality gates and a repeatable PostgreSQL restore drill before optional hosting.
+
 ## 2026-11-03 — Evidence-led PostgreSQL indexing
 
 Assistance: AI-assisted synthetic workload design, query-plan parsing, CI integration, migration

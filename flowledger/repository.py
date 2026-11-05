@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import Engine, and_, or_, select, update
+from sqlalchemy import Engine, and_, or_, select, text, update
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from flowledger.database import EventRecord, OutboxRecord, WorkflowRecord
@@ -72,6 +72,11 @@ class SqlAlchemyRepository:
 
     def __init__(self, sessions: SessionFactory):
         self._sessions = sessions
+
+    def check_health(self) -> None:
+        """Raise when a database round trip cannot complete."""
+        with self._sessions() as session:
+            session.execute(text("SELECT 1"))
 
     def add(self, workflow: Workflow, command: WorkerCommand | None = None) -> Workflow:
         """Optionally persist initial execution intent alongside the new workflow."""

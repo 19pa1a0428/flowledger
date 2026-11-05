@@ -68,8 +68,11 @@ will produce a finished feature. Work progresses only when the preceding increme
 22. DONE: Build a reproducible PostgreSQL 17 workload and query-plan baseline for workflow
     listing and audit history. Add a reversible composite workflow-list index after lower planner
     cost and index use were demonstrated; omit the audit candidate because cost did not improve.
-23. NEXT: Add Docker Compose for the modular API, PostgreSQL, Redis, relay and worker processes,
-    with health checks, migrations and a documented local recovery workflow.
+23. DONE: Add Docker Compose for the modular API, PostgreSQL, Redis, relay and worker processes.
+    Reuse one non-root Python image, gate startup on health/migrations, persist both stores,
+    smoke-test API-to-worker execution in CI and document local backup/recovery limitations.
+24. NEXT: Add deployment quality gates for dependency/container scanning, pinned image provenance
+    and a repeatable PostgreSQL backup/restore drill before considering optional cloud hosting.
 
 ## Working cadence
 
