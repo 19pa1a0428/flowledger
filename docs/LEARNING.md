@@ -24,6 +24,10 @@ execution without an explicit destructive choice; it is not presented as a produ
 The first CI attempt reached the running stack but exposed an entry-point error before backup:
 direct script execution could not resolve the `scripts` package. CI and the runbook now invoke the
 drill as `python -m scripts.restore_drill`, matching its package import boundary.
+Corrected GitHub Actions run 42146494598 passed all jobs in 1 minute 5 seconds, including the real
+volume deletion/restore/API check, container vulnerability policy and hashed provenance/SBOM
+artifact generation. This is the container evidence; the local subprocess test remains deliberately
+an orchestration contract rather than a claim that Docker ran locally.
 
 CI now records maximum BuildKit provenance metadata, generates a CycloneDX image SBOM and hashes
 both evidence files. Trivy fails on fixable high/critical OS or library vulnerabilities, while an
