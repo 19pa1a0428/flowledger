@@ -105,7 +105,7 @@ volumes, restores into a fresh PostgreSQL service, reruns migrations and verifie
 history through the authenticated API. Run it only against the local project with:
 
 ```bash
-python scripts/restore_drill.py --confirm-disposable
+python -m scripts.restore_drill --confirm-disposable
 ```
 
 The confirmation flag is intentionally mandatory because the drill executes

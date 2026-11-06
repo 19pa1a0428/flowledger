@@ -74,7 +74,7 @@ With the synthetic stack running, the following command proves that a custom-for
 backup can recover a workflow snapshot and its two-event history into newly created volumes:
 
 ```bash
-python scripts/restore_drill.py --confirm-disposable
+python -m scripts.restore_drill --confirm-disposable
 ```
 
 The script creates synthetic data, waits for worker execution, captures `pg_dump`, runs

@@ -21,6 +21,9 @@ transition, captures a custom-format logical dump, removes the disposable Compos
 into a fresh PostgreSQL service, reruns migrations and verifies the running snapshot plus exactly
 two history events through the API. The required `--confirm-disposable` flag prevents accidental
 execution without an explicit destructive choice; it is not presented as a production backup plan.
+The first CI attempt reached the running stack but exposed an entry-point error before backup:
+direct script execution could not resolve the `scripts` package. CI and the runbook now invoke the
+drill as `python -m scripts.restore_drill`, matching its package import boundary.
 
 CI now records maximum BuildKit provenance metadata, generates a CycloneDX image SBOM and hashes
 both evidence files. Trivy fails on fixable high/critical OS or library vulnerabilities, while an

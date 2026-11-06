@@ -78,7 +78,7 @@ jobs:
       - run: docker compose --env-file .env.example config --quiet
       - run: docker compose --env-file .env.example up --build --detach --wait
       - run: python scripts/compose_smoke.py
-      - run: python scripts/restore_drill.py --confirm-disposable
+      - run: python -m scripts.restore_drill --confirm-disposable
       - if: always()
         run: docker compose --env-file .env.example logs --no-color
       - if: always()
