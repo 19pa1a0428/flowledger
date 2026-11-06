@@ -67,3 +67,23 @@ workflow.
 For synthetic local data only, `docker compose down --volumes` removes both data volumes.
 The next `docker compose up --build --detach --wait` creates an empty environment and runs
 all migrations. This is a reset, not recovery.
+
+## Automated disposable restore drill
+
+With the synthetic stack running, the following command proves that a custom-format PostgreSQL
+backup can recover a workflow snapshot and its two-event history into newly created volumes:
+
+```bash
+python scripts/restore_drill.py --confirm-disposable
+```
+
+The script creates synthetic data, waits for worker execution, captures `pg_dump`, runs
+`docker compose down --volumes`, starts a fresh database, pipes the dump through `pg_restore`,
+starts the full stack and checks the restored record through the API. The explicit confirmation
+is a guardrail, not an interactive prompt. The command is destructive to the current Compose
+project and must never be pointed at retained or production data. CI runs it in an isolated
+runner and always removes the resulting volumes.
+
+Passing this drill proves logical recovery for the exercised schema and synthetic record. It does
+not establish a recovery-time objective, point-in-time recovery, encryption, off-site retention,
+automated production backups or Redis delivery-state recovery.

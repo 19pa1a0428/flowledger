@@ -1,5 +1,62 @@
 # Learning journal
 
+## 2026-11-05 — Deployment evidence and recovery proof
+
+Assistance: AI-assisted supply-chain gate design, immutable image resolution, destructive-test
+guardrails, restore automation, tests and documentation.
+
+Confirmed the preceding Compose increment in GitHub Actions run 41951043348: all jobs passed,
+including the container build and API-to-outbox-to-Redis-to-worker smoke path. The GitHub connector
+does not expose push-triggered Actions runs, so the public Actions result was inspected directly;
+no failure was inferred from an empty connector status list.
+
+Pinned the Python 3.12 slim, PostgreSQL 17 Alpine and Redis 7.4 Alpine inputs to multi-platform
+manifest digests resolved from Docker Official Images metadata on November 5. A dependency-free
+verifier rejects missing pins, altered digests and any remaining unpinned occurrence in the
+Dockerfile, Compose file or CI service definitions. Readable tags remain next to digests so the
+intended release line is reviewable.
+
+Added a guarded PostgreSQL restore drill. It creates a synthetic workflow, waits for its worker
+transition, captures a custom-format logical dump, removes the disposable Compose volumes, restores
+into a fresh PostgreSQL service, reruns migrations and verifies the running snapshot plus exactly
+two history events through the API. The required `--confirm-disposable` flag prevents accidental
+execution without an explicit destructive choice; it is not presented as a production backup plan.
+
+CI now records maximum BuildKit provenance metadata, generates a CycloneDX image SBOM and hashes
+both evidence files. Trivy fails on fixable high/critical OS or library vulnerabilities, while an
+independent pull-request workflow rejects newly introduced high-severity dependency advisories.
+No image is pushed and no registry, cloud service or paid resource is provisioned.
+
+Validation: Python 3.12 ran 124 tests locally: 103 passed and 21 live Redis variants were skipped
+because no disposable Redis URL was configured. The four new deployment tests cover reviewed
+digests, unpinned-reference rejection, mandatory destructive confirmation and the exact
+backup/remove/restore/verify sequence with isolated subprocess/API doubles. Image-pin verification,
+bytecode compilation and PostgreSQL offline migration generation passed. Vitest ran all 12 frontend
+tests and the TypeScript/Vite production build passed (19 transformed modules; 203.59 kB JavaScript
+and 4.26 kB CSS before gzip). Docker is unavailable in the local runtime, so the real destructive
+restore, BuildKit evidence and image scan must be validated by the disposable GitHub runner; no
+local container result is claimed.
+
+Limits: digest pins make input changes explicit but require deliberate refreshes to receive patched
+base images. Vulnerability databases can be delayed or incomplete, an SBOM is inventory rather than
+proof of safety, and a single logical restore does not establish RPO/RTO, point-in-time recovery,
+encrypted off-site retention or Redis reconstruction.
+
+Exercise: change one Redis digest character and run `python scripts/verify_deployment.py`; observe
+the failure, restore the reviewed digest, then run the test again. Explain why a readable tag plus
+digest is easier to review than either one alone.
+
+Interview question: What do image digest pinning, an SBOM, a vulnerability scan and a restore drill
+each prove—and what do they not prove?
+
+Answer outline: a digest fixes the exact input bytes; an SBOM inventories components; a scanner
+matches known advisories under a policy; a restore drill demonstrates recovery for one exercised
+backup path. None independently proves code correctness, absence of unknown vulnerabilities,
+production recoverability or secure operations, so they complement rather than replace tests,
+reviews, monitoring and a production recovery design.
+
+Next: package the architecture and operational tradeoffs into a concise synthetic demo walkthrough.
+
 ## 2026-11-04 — Modular Docker Compose deployment
 
 Assistance: AI-assisted process packaging, readiness contracts, Compose smoke coverage,

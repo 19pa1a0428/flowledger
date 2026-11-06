@@ -86,6 +86,31 @@ PostgreSQL is unavailable. These probes are intentionally unauthenticated and ex
 bounded status. The relay and worker let infrastructure errors terminate their process so
 Compose can restart them instead of hiding an unhealthy loop.
 
+### Deployment quality gates
+
+Python, PostgreSQL and Redis image references retain readable version tags but are also pinned to
+reviewed multi-platform manifest digests. `python scripts/verify_deployment.py` rejects an unpinned
+reference or an unexpected digest; digest updates are explicit review events rather than silent tag
+movement. The resolved digests came from Docker Official Images metadata, not from a local mirror.
+
+CI builds the application image with maximum BuildKit provenance metadata and SBOM support, scans
+the installed OS and language packages for fixable high/critical vulnerabilities, generates a
+CycloneDX SBOM, hashes both evidence files and retains them as a short-lived workflow artifact.
+This records what was built without publishing an image or provisioning a registry. Pull requests
+also run GitHub's dependency-diff review and reject newly introduced high-severity advisories.
+
+The Compose job performs a disposable PostgreSQL recovery drill after the API-to-worker smoke test:
+it creates a two-event synthetic workflow, takes a custom-format logical backup, removes the named
+volumes, restores into a fresh PostgreSQL service, reruns migrations and verifies the snapshot and
+history through the authenticated API. Run it only against the local project with:
+
+```bash
+python scripts/restore_drill.py --confirm-disposable
+```
+
+The confirmation flag is intentionally mandatory because the drill executes
+`docker compose down --volumes`. See the recovery runbook for the operational boundary.
+
 ## Design
 
 A workflow starts pending, then runs and either succeeds or fails. Failed work may

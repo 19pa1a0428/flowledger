@@ -71,8 +71,11 @@ will produce a finished feature. Work progresses only when the preceding increme
 23. DONE: Add Docker Compose for the modular API, PostgreSQL, Redis, relay and worker processes.
     Reuse one non-root Python image, gate startup on health/migrations, persist both stores,
     smoke-test API-to-worker execution in CI and document local backup/recovery limitations.
-24. NEXT: Add deployment quality gates for dependency/container scanning, pinned image provenance
-    and a repeatable PostgreSQL backup/restore drill before considering optional cloud hosting.
+24. DONE: Add deployment quality gates for pull-request dependency review, fixable high/critical
+    container vulnerabilities, immutable official-image inputs, BuildKit provenance metadata and
+    CycloneDX SBOM evidence. Prove PostgreSQL logical restore after deleting disposable volumes.
+25. NEXT: Create a concise synthetic demo walkthrough and architecture/operations decision record,
+    then evaluate whether optional cloud hosting adds portfolio value without paid provisioning.
 
 ## Working cadence
 

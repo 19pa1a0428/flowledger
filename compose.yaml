@@ -1,6 +1,7 @@
 name: flowledger
 
 x-app: &app
+  image: flowledger-local:${FLOWLEDGER_IMAGE_TAG:-dev}
   build:
     context: .
   environment:
@@ -11,7 +12,7 @@ x-app: &app
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:5d9ee39acd134b44f52fc49ca3b88fc651f0560b0db93292fcd37ff150c71d3a
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-flowledger}
       POSTGRES_USER: ${POSTGRES_USER:-flowledger}
@@ -26,7 +27,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:7.4-alpine@sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

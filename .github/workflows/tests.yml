@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       redis:
-        image: redis:7.4-alpine
+        image: redis:7.4-alpine@sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b
         ports:
           - 6379:6379
         options: >-
@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17-alpine@sha256:5d9ee39acd134b44f52fc49ca3b88fc651f0560b0db93292fcd37ff150c71d3a
         env:
           POSTGRES_DB: flowledger_test
           POSTGRES_USER: flowledger
@@ -78,8 +78,49 @@ jobs:
       - run: docker compose --env-file .env.example config --quiet
       - run: docker compose --env-file .env.example up --build --detach --wait
       - run: python scripts/compose_smoke.py
+      - run: python scripts/restore_drill.py --confirm-disposable
       - if: always()
         run: docker compose --env-file .env.example logs --no-color
       - if: always()
         run: docker compose --env-file .env.example down --volumes
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python scripts/verify_deployment.py
+      - name: Build image and record provenance metadata
+        env:
+          BUILDX_METADATA_PROVENANCE: max
+        run: >-
+          docker buildx build --load --provenance=mode=max --sbom=true
+          --metadata-file build-metadata.json --tag flowledger:${{ github.sha }} .
+      - name: Scan image for fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: flowledger:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+      - name: Generate CycloneDX software bill of materials
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: flowledger:${{ github.sha }}
+          format: cyclonedx
+          output: flowledger.cdx.json
+          exit-code: "0"
+      - name: Hash build evidence
+        run: sha256sum build-metadata.json flowledger.cdx.json > deployment-evidence.sha256
+      - uses: actions/upload-artifact@v5
+        with:
+          name: deployment-evidence-${{ github.sha }}
+          path: |
+            build-metadata.json
+            flowledger.cdx.json
+            deployment-evidence.sha256
+          retention-days: 14
 
