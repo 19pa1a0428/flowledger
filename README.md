@@ -111,6 +111,21 @@ python -m scripts.restore_drill --confirm-disposable
 The confirmation flag is intentionally mandatory because the drill executes
 `docker compose down --volumes`. See the recovery runbook for the operational boundary.
 
+## Run the synthetic portfolio walkthrough
+
+With the Compose stack healthy, run:
+
+```bash
+python -m scripts.demo_walkthrough
+```
+
+The deterministic runner creates only synthetic data and checks the public contracts for
+API-to-outbox-to-Redis-to-worker delivery, a stale-version `409`, one audited retry and successful
+completion with the expected six-event history. It fails rather than presenting partial output as
+success. See [the five-minute demo narrative](docs/DEMO.md) and
+[the modular deployment decision](docs/adr/0002-modular-deployment-boundary.md) for scope and
+cloud-hosting tradeoffs.
+
 ## Design
 
 A workflow starts pending, then runs and either succeeds or fails. Failed work may

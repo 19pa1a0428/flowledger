@@ -1,5 +1,54 @@
 # Learning journal
 
+## 2026-11-06 — Reproducible portfolio walkthrough and deployment decision
+
+Assistance: AI-assisted demo contract design, failure-path tests, architecture/operations decision
+analysis and documentation.
+
+Added a dependency-free synthetic demo runner for the existing Compose stack. It checks readiness,
+creates a workflow through the authenticated API, waits for the outbox relay and Redis-backed worker
+to start attempt one, records a failure, proves a stale version receives `409`, performs one retry
+and verifies the exact six-event terminal history. The runner validates each response and exits on
+partial or unexpected state instead of printing a success-looking narrative.
+
+Added a five-minute walkthrough that connects observable behavior to the domain, persistence,
+delivery, concurrency and operational evidence already in the repository. ADR 0002 keeps a single
+versioned application image with separately supervised API, relay, worker and migration commands.
+Optional paid cloud hosting is deferred: without a specific remote-demo need, budget, service
+objectives, secrets/TLS, monitoring and backup ownership, it creates a public maintenance surface
+without materially stronger reliability evidence. A future provider decision must use then-current
+requirements and pricing rather than an invented recommendation.
+
+Validation: after installing the declared project and test dependencies in the fresh runtime,
+Python 3.12 ran 128 tests: 107 passed and 21 live Redis variants were skipped because no disposable
+Redis URL was configured. The four new demo tests cover the successful delivery/conflict/retry path,
+readiness failure, worker timeout and incomplete final history. Bytecode compilation, immutable
+deployment-pin verification and PostgreSQL offline migration generation passed. Vitest ran all 12
+frontend tests and the TypeScript/Vite production build passed (19 transformed modules; 203.59 kB
+JavaScript and 4.26 kB CSS before gzip). Docker is unavailable in the local runtime, so the live
+Compose walkthrough was not run locally; its component delivery path remains covered by the last
+green Compose CI run, while this increment's new orchestration contract still requires current CI.
+
+Limits: the walkthrough is a local single-host demonstration using synthetic database-only effects.
+It does not prove production uptime, cloud security, external-message exactly-once behavior,
+multi-host migration coordination or Redis disaster reconstruction. The known delivered-outbox /
+missing-Redis-receipt gap remains and is the next roadmap increment.
+
+Exercise: run `python -m scripts.demo_walkthrough`, open the generated workflow in the React client
+and match each of the six events to the script step that created it. Then identify which first
+`running` transition came from the worker rather than the operator.
+
+Interview question: Why can a tested local Compose deployment be stronger portfolio evidence than
+an unmonitored public cloud URL?
+
+Answer outline: reproducible tests, explicit failure handling, immutable inputs and recovery drills
+demonstrate engineering decisions and their limits. A public URL proves reachability at one moment;
+without service objectives, monitoring, security and recovery ownership it adds cost and attack
+surface, not evidence of reliability. Hosting becomes valuable when its operational requirements
+are defined and exercised.
+
+Next: add operator-controlled reconciliation for delivered outbox rows missing a Redis receipt.
+
 ## 2026-11-05 — Deployment evidence and recovery proof
 
 Assistance: AI-assisted supply-chain gate design, immutable image resolution, destructive-test

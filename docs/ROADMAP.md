@@ -74,8 +74,12 @@ will produce a finished feature. Work progresses only when the preceding increme
 24. DONE: Add deployment quality gates for pull-request dependency review, fixable high/critical
     container vulnerabilities, immutable official-image inputs, BuildKit provenance metadata and
     CycloneDX SBOM evidence. Prove PostgreSQL logical restore after deleting disposable volumes.
-25. NEXT: Create a concise synthetic demo walkthrough and architecture/operations decision record,
-    then evaluate whether optional cloud hosting adds portfolio value without paid provisioning.
+25. DONE: Add a deterministic synthetic demo runner and concise walkthrough covering outbox-to-worker
+    delivery, audited retry, optimistic conflict rejection and final history. Record the modular
+    deployment boundary and defer paid cloud hosting until a remote-demo need, budget, service
+    objectives, security controls and operational owner exist.
+26. NEXT: Add an operator-controlled reconciliation path for outbox rows marked delivered when the
+    corresponding Redis submission receipt is missing, with dry-run output and fault-injection tests.
 
 ## Working cadence
 
