@@ -26,8 +26,10 @@ readiness failure, worker timeout and incomplete final history. Bytecode compila
 deployment-pin verification and PostgreSQL offline migration generation passed. Vitest ran all 12
 frontend tests and the TypeScript/Vite production build passed (19 transformed modules; 203.59 kB
 JavaScript and 4.26 kB CSS before gzip). Docker is unavailable in the local runtime, so the live
-Compose walkthrough was not run locally; its component delivery path remains covered by the last
-green Compose CI run, while this increment's new orchestration contract still requires current CI.
+Compose walkthrough was not run locally. GitHub Actions run 42325454499 passed all seven jobs,
+including Python 3.11-3.13, the four new demo contracts, frontend checks, PostgreSQL plan gates,
+container scan/SBOM evidence and the Compose smoke plus destructive restore drill. The new demo
+runner itself remains a documented operator invocation rather than a second redundant CI smoke.
 
 Limits: the walkthrough is a local single-host demonstration using synthetic database-only effects.
 It does not prove production uptime, cloud security, external-message exactly-once behavior,
