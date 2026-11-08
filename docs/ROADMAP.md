@@ -78,8 +78,12 @@ will produce a finished feature. Work progresses only when the preceding increme
     delivery, audited retry, optimistic conflict rejection and final history. Record the modular
     deployment boundary and defer paid cloud hosting until a remote-demo need, budget, service
     objectives, security controls and operational owner exist.
-26. NEXT: Add an operator-controlled reconciliation path for outbox rows marked delivered when the
-    corresponding Redis submission receipt is missing, with dry-run output and fault-injection tests.
+26. DONE: Add a bounded, dry-run-by-default operator reconciliation command for delivered outbox
+    rows without durable database execution receipts. Detect missing, identical and conflicting
+    Redis receipts; explicitly requeue only missing stable commands, with convergence, outage,
+    conflict and completed-command safety tests.
+27. NEXT: Add a read-only operational health snapshot for outbox backlog age and bounded Redis
+    pending, claimed, delayed, quarantined and exhausted counts without exposing payload contents.
 
 ## Working cadence
 

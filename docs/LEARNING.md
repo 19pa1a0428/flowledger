@@ -1,5 +1,54 @@
 # Learning journal
 
+## 2026-11-07 — Guarded outbox reconciliation after Redis loss
+
+Assistance: AI-assisted recovery-boundary design, bounded reconciliation implementation,
+fault-injection tests and operational documentation.
+
+Added a dry-run-by-default reconciliation path for the specific gap where PostgreSQL marks an
+outbox command delivered but Redis no longer retains its submission receipt. The bounded scan
+considers only delivered rows without a durable database execution receipt. This is important:
+an execution receipt proves that either the transition or its terminal rejection already committed,
+so requeueing that command would create needless delivery work even though database idempotency
+would prevent a duplicate effect.
+
+For each unresolved row, reconciliation validates the stored command envelope and compares the
+exact Redis receipt payload. Identical receipts are left alone, changed payloads are reported as
+conflicts and never overwritten, and missing receipts are reported without mutation. The explicit
+`--requeue-missing` mode resubmits the original stable command ID through the same atomic Lua path.
+If another reconciler wins between inspection and submission, the operation converges as an exact
+replay. Redis or database errors propagate instead of producing a success-looking report.
+
+Validation: Python 3.12 ran 135 tests locally: 114 passed and 21 live Redis variants were
+skipped because no disposable Redis URL was configured. Seven new reconciliation tests cover
+read-only reporting, one-time repair, durable-execution exclusion, changed-receipt conflict,
+concurrent convergence, Redis outage preservation and bounded input validation. Bytecode
+compilation, immutable deployment-pin verification and PostgreSQL offline migration generation
+passed. Vitest ran all 12 frontend tests and the TypeScript/Vite production build passed (19
+transformed modules; 203.59 kB JavaScript and 4.26 kB CSS before gzip). Docker is unavailable in
+the local runtime, so the documented one-off Compose command was not run locally; current CI must
+provide the live Redis/PostgreSQL and Compose evidence.
+
+Limits: this repairs a missing submission receipt for unresolved commands. It does not prove that
+an existing receipt still corresponds to pending, claimed or delayed work; reconstruct retry
+counters, quarantine or exhaustion state; or create a separate administrative audit table. The
+command requires direct operator environment access, defaults to a read-only bounded report and
+must be run after investigating the cause of Redis loss.
+
+Exercise: create and relay one synthetic workflow command, delete its Redis receipt and pending
+payload in a disposable environment, run the dry report, then use `--requeue-missing`. Run it again
+and explain why the second repair does not append another pending command.
+
+Interview question: Why should reconciliation exclude commands that already have a durable database
+execution receipt, even though their Redis submission receipt is missing?
+
+Answer outline: the database receipt commits atomically with the transition or terminal rejection,
+so the business outcome is already durable. Requeueing is safe but unnecessary and creates noise.
+Only commands lacking both proofs need reconstruction; stable IDs and atomic Redis submission then
+make concurrent repair converge without claiming exactly-once delivery.
+
+Next: add a payload-free operational health snapshot for database and Redis backlog signals.
+
 ## 2026-11-06 — Reproducible portfolio walkthrough and deployment decision
 
 Assistance: AI-assisted demo contract design, failure-path tests, architecture/operations decision

@@ -399,7 +399,13 @@ backoff for the relay itself, retention cleanup and indexes for large backlogs r
 future work. Worker execution has its own retry policy below. Set Redis
 connection/socket timeouts for bounded outages.
 Delivered rows are retained for audit. Redis data loss after delivery marking still
-requires reconciliation; this outbox does not guarantee exactly-once effects.
+requires an explicit operator decision; this outbox does not guarantee exactly-once effects.
+`python -m scripts.reconcile_outbox` is a bounded dry run over delivered rows that have no
+database execution receipt. It reports missing, present and conflicting Redis submission
+receipts. Add `--requeue-missing` only after review to atomically resubmit the original stable
+command IDs. Executed or terminally rejected commands are excluded, and Redis/database errors
+propagate rather than being reported as success. See the recovery runbook for the guarded Compose
+procedure and remaining Redis recovery limits.
 
 ## Remaining stack
 

@@ -55,12 +55,34 @@ After an ordinary restart, keep both named volumes and run `docker compose up --
 recovers expired claims after their lease and durable PostgreSQL command receipts prevent
 a completed database transition from being applied twice.
 
-If Redis data is lost, PostgreSQL remains authoritative, but outbox rows already marked
-delivered cannot be reconstructed automatically. Do not mark them pending by hand: the
-current system has no audited replay operation. Restore the matching Redis volume/AOF or
-record the limitation and use synthetic data to rebuild the environment. A production
-design needs tested backups, retention, monitoring and an explicit administrative replay
-workflow.
+If Redis data is lost, PostgreSQL remains authoritative. Restore the matching Redis volume/AOF
+first when possible. If that is unavailable, stop the relay and worker and run the bounded,
+read-only reconciliation report from a one-off application container:
+
+```bash
+docker compose stop relay worker
+docker compose run --rm --no-deps relay python -m scripts.reconcile_outbox
+```
+
+The report scans delivered commands that have no durable database execution receipt. It lists
+missing, present and conflicting Redis submission receipts without changing either store. Review
+the command IDs and investigate every conflict. To resubmit only missing stable commands:
+
+```bash
+docker compose run --rm --no-deps relay \
+  python -m scripts.reconcile_outbox --requeue-missing
+docker compose start relay worker
+```
+
+Repair is explicit and bounded to 100 rows by default (`--limit` accepts 1-1000). A concurrent
+reconciler converges through the atomic Redis receipt check. Rows with database execution receipts
+are excluded because their effect or terminal rejection already committed; requeueing them would
+be needless. Do not edit outbox delivery timestamps or Redis keys by hand.
+
+This closes the missing-submission-receipt path, not every Redis disaster case. It does not prove
+that an existing receipt still has a pending/delayed/claimed payload, reconstruct retry counters,
+quarantine or exhaustion state, or retain an administrative audit record beyond existing database
+and process logs. A production design still needs tested Redis backups, retention and monitoring.
 
 ## Disposable reset
 

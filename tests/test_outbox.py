@@ -8,11 +8,13 @@ from fakeredis import FakeRedis
 from sqlalchemy import create_engine, event, select, func
 from sqlalchemy.orm import Session, sessionmaker
 
-from flowledger.database import Base, OutboxRecord, WorkflowRecord, EventRecord
+from flowledger.claims import RedisClaimQueue
+from flowledger.database import Base, CommandReceipt, OutboxRecord, WorkflowRecord, EventRecord
 from flowledger.domain import Workflow
 from flowledger.jobs import RedisSubmissionQueue, WorkerCommand, SubmissionConflict
-from flowledger.outbox import relay_pending
+from flowledger.outbox import reconcile_delivered, relay_pending
 from flowledger.repository import SqlAlchemyRepository, build_session_factory
+from flowledger.worker import run_once
 
 
 class OutboxTests(unittest.TestCase):
@@ -104,3 +106,94 @@ class OutboxTests(unittest.TestCase):
         for limit in (0, 1001, True, 1.5):
             with self.assertRaises(ValueError):
                 relay_pending(self.sessions, self.queue, limit=limit)
+
+    def lose_submission_state(self, command):
+        self.assertEqual(relay_pending(self.sessions, self.queue), 1)
+        self.redis.delete("flowledger:{jobs}:receipts", "flowledger:{jobs}:pending")
+        with self.sessions() as session:
+            self.assertIsNotNone(session.get(OutboxRecord, command.command_id).delivered_at)
+
+    def test_reconciliation_dry_run_is_read_only(self):
+        command = self.stage()
+        self.lose_submission_state(command)
+
+        report = reconcile_delivered(self.sessions, self.queue)
+
+        self.assertEqual(report.missing_ids, (command.command_id,))
+        self.assertEqual(report.requeued_ids, ())
+        self.assertEqual(self.redis.llen("flowledger:{jobs}:pending"), 0)
+        self.assertIsNone(self.queue.receipt_payload(command.command_id))
+
+    def test_reconciliation_requeues_original_command_once(self):
+        command = self.stage()
+        self.lose_submission_state(command)
+
+        first = reconcile_delivered(self.sessions, self.queue, requeue_missing=True)
+        second = reconcile_delivered(self.sessions, self.queue, requeue_missing=True)
+
+        self.assertEqual(first.requeued_ids, (command.command_id,))
+        self.assertEqual((second.receipts_present, second.requeued_ids), (1, ()))
+        self.assertEqual(self.redis.llen("flowledger:{jobs}:pending"), 1)
+        self.assertEqual(self.queue.receipt_payload(command.command_id),
+                         command.model_dump_json())
+
+    def test_database_execution_receipt_prevents_needless_requeue(self):
+        command = self.stage()
+        self.assertEqual(relay_pending(self.sessions, self.queue), 1)
+        self.assertTrue(run_once(RedisClaimQueue(self.redis), self.repo))
+        self.redis.delete("flowledger:{jobs}:receipts")
+
+        report = reconcile_delivered(self.sessions, self.queue, requeue_missing=True)
+
+        self.assertEqual(report.scanned, 0)
+        self.assertEqual(self.redis.llen("flowledger:{jobs}:pending"), 0)
+        with self.sessions() as session:
+            self.assertIsNotNone(session.get(CommandReceipt, command.command_id))
+
+    def test_reconciliation_reports_changed_receipt_without_overwrite(self):
+        command = self.stage()
+        self.assertEqual(relay_pending(self.sessions, self.queue), 1)
+        self.redis.hset("flowledger:{jobs}:receipts", str(command.command_id), "changed")
+
+        report = reconcile_delivered(self.sessions, self.queue, requeue_missing=True)
+
+        self.assertEqual(report.conflict_ids, (command.command_id,))
+        self.assertEqual(report.requeued_ids, ())
+        self.assertEqual(self.redis.hget("flowledger:{jobs}:receipts", str(command.command_id)),
+                         b"changed")
+
+    def test_reconciliation_outage_propagates_without_database_change(self):
+        command = self.stage()
+        self.lose_submission_state(command)
+        broken = Mock()
+        broken.receipt_payload.return_value = None
+        broken.submit.side_effect = ConnectionError("synthetic reconciliation outage")
+
+        with self.assertRaises(ConnectionError):
+            reconcile_delivered(self.sessions, broken, requeue_missing=True)
+
+        with self.sessions() as session:
+            row = session.get(OutboxRecord, command.command_id)
+            self.assertIsNotNone(row.delivered_at)
+            self.assertIsNone(session.get(CommandReceipt, command.command_id))
+
+    def test_concurrent_reconciliation_converges_on_identical_receipt(self):
+        command = self.stage()
+        self.lose_submission_state(command)
+        racing = Mock()
+        racing.receipt_payload.return_value = None
+        racing.submit.return_value = False
+
+        report = reconcile_delivered(self.sessions, racing, requeue_missing=True)
+
+        self.assertEqual(report.missing_ids, (command.command_id,))
+        self.assertEqual(report.converged_ids, (command.command_id,))
+        self.assertEqual(report.requeued_ids, ())
+
+    def test_reconciliation_validates_bounds_and_mode(self):
+        for limit in (0, 1001, True, 1.5):
+            with self.subTest(limit=limit):
+                with self.assertRaises(ValueError):
+                    reconcile_delivered(self.sessions, self.queue, limit=limit)
+        with self.assertRaises(TypeError):
+            reconcile_delivered(self.sessions, self.queue, requeue_missing=1)

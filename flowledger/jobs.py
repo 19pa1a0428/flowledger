@@ -46,6 +46,10 @@ class SubmissionConflict(ValueError):
     """A command ID was reused with a different payload."""
 
 
+RECEIPTS_KEY = "flowledger:{jobs}:receipts"
+PENDING_KEY = "flowledger:{jobs}:pending"
+
+
 # Both keys share a Redis Cluster hash tag. Check types before writing because
 # Redis does not roll back earlier Lua writes when a later command errors.
 _SUBMIT = """
@@ -72,14 +76,26 @@ class RedisSubmissionQueue:
     """Retain receipts indefinitely; Redis persistence is an operator concern."""
 
     def __init__(self, client: Redis):
+        self._client = client
         self._submit = client.register_script(_SUBMIT)
 
     def submit(self, command: WorkerCommand) -> bool:
         """True for new work, False for exact replay; Redis errors propagate."""
         result = self._submit(
-            keys=["flowledger:{jobs}:receipts", "flowledger:{jobs}:pending"],
+            keys=[RECEIPTS_KEY, PENDING_KEY],
             args=[str(command.command_id), command.model_dump_json()],
         )
         if result == -1:
             raise SubmissionConflict("Command ID already has a different payload")
         return result == 1
+
+    def receipt_payload(self, command_id: UUID) -> str | None:
+        """Return the retained submission payload without mutating queue state."""
+        if not isinstance(command_id, UUID):
+            raise TypeError("command_id must be a UUID")
+        payload = self._client.hget(RECEIPTS_KEY, str(command_id))
+        if payload is None or isinstance(payload, str):
+            return payload
+        if isinstance(payload, bytes):
+            return payload.decode("utf-8")
+        raise TypeError("Redis receipt payload must be bytes or text")
