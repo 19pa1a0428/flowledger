@@ -5,6 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH=/opt/flowledger/bin:$PATH
 
 WORKDIR /opt/flowledger
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1 \
+    && rm -rf /var/lib/apt/lists/*
 RUN addgroup --system flowledger && adduser --system --ingroup flowledger flowledger
 
 COPY pyproject.toml README.md alembic.ini ./

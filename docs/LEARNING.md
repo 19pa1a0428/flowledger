@@ -19,7 +19,7 @@ conflicts and never overwritten, and missing receipts are reported without mutat
 If another reconciler wins between inspection and submission, the operation converges as an exact
 replay. Redis or database errors propagate instead of producing a success-looking report.
 
-Validation: Python 3.12 ran 135 tests locally: 114 passed and 21 live Redis variants were
+Validation: Python 3.12 ran 136 tests locally: 115 passed and 21 live Redis variants were
 skipped because no disposable Redis URL was configured. Seven new reconciliation tests cover
 read-only reporting, one-time repair, durable-execution exclusion, changed-receipt conflict,
 concurrent convergence, Redis outage preservation and bounded input validation. Bytecode
@@ -28,6 +28,16 @@ passed. Vitest ran all 12 frontend tests and the TypeScript/Vite production buil
 transformed modules; 203.59 kB JavaScript and 4.26 kB CSS before gzip). Docker is unavailable in
 the local runtime, so the documented one-off Compose command was not run locally; current CI must
 provide the live Redis/PostgreSQL and Compose evidence.
+
+The first GitHub Actions run for this increment passed every functional job, including live Redis,
+PostgreSQL plans, Compose smoke and destructive restore, but the supply-chain job correctly failed:
+Trivy's updated advisory data found two fixable high-severity `zlib1g` vulnerabilities in the still-
+current reviewed `python:3.12-slim` digest. Docker Hub and Docker Official Images metadata continued
+to resolve that tag to the same digest on November 7. Rather than suppressing the findings, the
+Dockerfile now installs Debian's explicit fixed `zlib1g` version
+`1:1.3.dfsg+really1.3.1-1+deb13u1`; deployment verification rejects removal of that patch until a
+future reviewed base digest incorporates it. Final CI validation is pending for this corrective
+commit.
 
 Limits: this repairs a missing submission receipt for unresolved commands. It does not prove that
 an existing receipt still corresponds to pending, claimed or delayed work; reconstruct retry

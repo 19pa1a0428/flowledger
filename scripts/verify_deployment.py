@@ -9,6 +9,9 @@ EXPECTED = {
     "redis:7.4-alpine": "c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b",
 }
 FILES = ("Dockerfile", "compose.yaml", ".github/workflows/tests.yml")
+EXPECTED_OS_PATCHES = (
+    "zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1",
+)
 
 
 def verify(root: Path) -> None:
@@ -22,6 +25,9 @@ def verify(root: Path) -> None:
         for name, content in contents.items():
             if pattern.search(content):
                 raise ValueError(f"Unpinned {image} reference in {name}")
+    for package in EXPECTED_OS_PATCHES:
+        if package not in contents["Dockerfile"]:
+            raise ValueError(f"Missing reviewed OS security patch for {package.split('=')[0]}")
 
 
 if __name__ == "__main__":

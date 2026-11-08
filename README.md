@@ -92,6 +92,10 @@ Python, PostgreSQL and Redis image references retain readable version tags but a
 reviewed multi-platform manifest digests. `python scripts/verify_deployment.py` rejects an unpinned
 reference or an unexpected digest; digest updates are explicit review events rather than silent tag
 movement. The resolved digests came from Docker Official Images metadata, not from a local mirror.
+When the vulnerability gate identified fixed high-severity zlib advisories before the reviewed base
+digest had moved, the Dockerfile added the exact patched Debian package version and the verifier made
+that patch an explicit input. This preserves a failing gate instead of suppressing the findings;
+remove the overlay only after a later reviewed base digest contains the fix and passes the same scan.
 
 CI builds the application image with maximum BuildKit provenance metadata and SBOM support, scans
 the installed OS and language packages for fixable high/critical vulnerabilities, generates a

@@ -29,6 +29,23 @@ class DeploymentTests(TestCase):
             with self.assertRaisesRegex(ValueError, "reviewed image pin|Unpinned"):
                 verify(copy)
 
+    def test_required_os_security_patch_is_explicit(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            copy = Path(directory)
+            for name in FILES:
+                target = copy / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text((root / name).read_text(encoding="utf-8"), encoding="utf-8")
+            dockerfile = copy / "Dockerfile"
+            dockerfile.write_text(
+                dockerfile.read_text(encoding="utf-8").replace(
+                    "zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1", "zlib1g"
+                ), encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "Missing reviewed OS security patch"):
+                verify(copy)
+
     def test_restore_drill_requires_destructive_confirmation(self):
         with self.assertRaisesRegex(ValueError, "confirm-disposable"):
             drill(confirm_disposable=False)
