@@ -36,8 +36,9 @@ current reviewed `python:3.12-slim` digest. Docker Hub and Docker Official Image
 to resolve that tag to the same digest on November 7. Rather than suppressing the findings, the
 Dockerfile now installs Debian's explicit fixed `zlib1g` version
 `1:1.3.dfsg+really1.3.1-1+deb13u1`; deployment verification rejects removal of that patch until a
-future reviewed base digest incorporates it. Final CI validation is pending for this corrective
-commit.
+future reviewed base digest incorporates it. Corrective CI run 42433867857 completed successfully:
+the image build and Trivy scan passed, as did the SBOM evidence, Compose smoke and destructive
+restore drill, Python 3.11–3.13 matrix, frontend build/tests and PostgreSQL plan checks.
 
 Limits: this repairs a missing submission receipt for unresolved commands. It does not prove that
 an existing receipt still corresponds to pending, claimed or delayed work; reconstruct retry
