@@ -98,6 +98,21 @@ class ClaimTests(unittest.TestCase):
             self.queue.claim()
         self.assertEqual(self.client.llen('flowledger:{jobs}:pending'), 1)
 
+    def test_health_snapshot_is_bounded_and_payload_free(self):
+        self.client.rpush('flowledger:{jobs}:pending', 'secret-a', 'secret-b', 'secret-c')
+        self.client.hset('flowledger:{jobs}:claims', 'token', 'secret-d')
+        self.client.zadd('flowledger:{jobs}:delayed', {'secret-e': 1})
+        self.client.rpush('flowledger:{jobs}:exhausted', 'secret-f')
+        self.client.rpush('flowledger:{jobs}:quarantine', 'secret-g')
+
+        snapshot = self.queue.health_snapshot(count_limit=2)
+
+        self.assertEqual((snapshot.pending.value, snapshot.pending.capped), (2, True))
+        for name in ('claimed', 'delayed', 'quarantined', 'exhausted'):
+            count = getattr(snapshot, name)
+            self.assertEqual((count.value, count.capped), (1, False))
+        self.assertNotIn('secret', repr(snapshot))
+
     def test_validation(self):
         for value in [True, 0, -1, 1.5, 2**40]:
             with self.subTest(value=value):

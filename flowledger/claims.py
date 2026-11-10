@@ -128,10 +128,26 @@ redis.call('HDEL', KEYS[2], ARGV[1])
 redis.call('ZREM', KEYS[3], ARGV[1])
 return 1
 """
-_KEYS = ['flowledger:{jobs}:pending', 'flowledger:{jobs}:claims',
-         'flowledger:{jobs}:deadlines', 'flowledger:{jobs}:failures',
-         'flowledger:{jobs}:delayed', 'flowledger:{jobs}:exhausted',
-         'flowledger:{jobs}:quarantine']
+CLAIM_KEYS = ('flowledger:{jobs}:pending', 'flowledger:{jobs}:claims',
+              'flowledger:{jobs}:deadlines', 'flowledger:{jobs}:failures',
+              'flowledger:{jobs}:delayed', 'flowledger:{jobs}:exhausted',
+              'flowledger:{jobs}:quarantine')
+
+_COUNT_SNAPSHOT = _PRELUDE + """
+local limit = tonumber(ARGV[1])
+local function bounded(value)
+    if value > limit then return limit, 1 end
+    return value, 0
+end
+local pending, pending_capped = bounded(redis.call('LLEN', KEYS[1]))
+local claimed, claimed_capped = bounded(redis.call('HLEN', KEYS[2]))
+local delayed, delayed_capped = bounded(redis.call('ZCARD', KEYS[5]))
+local exhausted, exhausted_capped = bounded(redis.call('LLEN', KEYS[6]))
+local quarantined, quarantined_capped = bounded(redis.call('LLEN', KEYS[7]))
+return {pending, pending_capped, claimed, claimed_capped,
+        delayed, delayed_capped, quarantined, quarantined_capped,
+        exhausted, exhausted_capped}
+"""
 
 
 @dataclass(frozen=True)
@@ -153,6 +169,22 @@ class ExhaustedCommand:
     failure_count: int
 
 
+@dataclass(frozen=True)
+class BoundedCount:
+    value: int
+    capped: bool
+
+
+@dataclass(frozen=True)
+class QueueHealth:
+    count_limit: int
+    pending: BoundedCount
+    claimed: BoundedCount
+    delayed: BoundedCount
+    quarantined: BoundedCount
+    exhausted: BoundedCount
+
+
 class RedisClaimQueue:
     def __init__(self, client: Redis, retry_policy: RetryPolicy | None = None):
         self.retry_policy = retry_policy if retry_policy is not None else RetryPolicy()
@@ -163,11 +195,12 @@ class RedisClaimQueue:
         self._retry = client.register_script(_RETRY)
         self._promote = client.register_script(_PROMOTE)
         self._quarantine = client.register_script(_QUARANTINE)
+        self._count_snapshot = client.register_script(_COUNT_SNAPSHOT)
 
     def claim(self, lease_ms: int = 30_000) -> Claim | None:
         self._positive_int(lease_ms)
         token = str(uuid4())
-        payload = self._claim(keys=_KEYS, args=[token, lease_ms])
+        payload = self._claim(keys=CLAIM_KEYS, args=[token, lease_ms])
         if payload is None:
             return None
         try:
@@ -180,13 +213,13 @@ class RedisClaimQueue:
 
     def acknowledge(self, token: str) -> bool:
         """Reject unknown, expired, or already acknowledged claim tokens."""
-        return bool(self._ack(keys=_KEYS, args=[token]))
+        return bool(self._ack(keys=CLAIM_KEYS, args=[token]))
 
     def recover_expired(self, limit: int = 100) -> int:
         """Back off or exhaust expired claims; call periodically while idle."""
         self._batch_size(limit)
         policy = self.retry_policy
-        return int(self._recover(keys=_KEYS, args=[limit, policy.max_failures,
+        return int(self._recover(keys=CLAIM_KEYS, args=[limit, policy.max_failures,
                             policy.base_delay_ms, policy.max_delay_ms]))
 
     def retry(self, token: str) -> str:
@@ -196,26 +229,37 @@ class RedisClaimQueue:
         Redis errors propagate; an uncertain result is resolved by token replay.
         """
         policy = self.retry_policy
-        result = int(self._retry(keys=_KEYS, args=[token, policy.max_failures,
+        result = int(self._retry(keys=CLAIM_KEYS, args=[token, policy.max_failures,
                           policy.base_delay_ms, policy.max_delay_ms]))
         return {0: "stale", 1: "scheduled", 2: "exhausted"}[result]
 
     def promote_due(self, limit: int = 100) -> int:
         """Move a bounded due batch to pending; call periodically while idle."""
         self._batch_size(limit)
-        return int(self._promote(keys=_KEYS, args=[limit]))
+        return int(self._promote(keys=CLAIM_KEYS, args=[limit]))
 
     def quarantine(self, token: str, reason: str) -> bool:
         """Atomically retain an active claim and remove it from delivery state."""
         if reason not in {"malformed_command", "command_id_conflict"}:
             raise ValueError("Unsupported quarantine reason")
-        return bool(self._quarantine(keys=_KEYS, args=[token, reason]))
+        return bool(self._quarantine(keys=CLAIM_KEYS, args=[token, reason]))
+
+    def health_snapshot(self, count_limit: int = 10_000) -> QueueHealth:
+        """Return one atomic, payload-free view of retained queue cardinalities."""
+        self._positive_int(count_limit)
+        values = [int(value) for value in
+                  self._count_snapshot(keys=CLAIM_KEYS, args=[count_limit])]
+        if len(values) != 10:
+            raise RuntimeError("Unexpected Redis health snapshot response")
+        counts = [BoundedCount(values[index], bool(values[index + 1]))
+                  for index in range(0, len(values), 2)]
+        return QueueHealth(count_limit, *counts)
 
     def list_quarantined(self, offset: int = 0,
                          limit: int = 100) -> list[QuarantinedCommand]:
         """Read an oldest-first bounded page without changing delivery state."""
         self._page(offset, limit)
-        records = self._client.lrange(_KEYS[6], offset, offset + limit - 1)
+        records = self._client.lrange(CLAIM_KEYS[6], offset, offset + limit - 1)
         result = []
         for raw in records:
             try:
@@ -237,10 +281,10 @@ class RedisClaimQueue:
                        limit: int = 100) -> list[ExhaustedCommand]:
         """Read an oldest-first bounded page with its retained failure counts."""
         self._page(offset, limit)
-        payloads = self._client.lrange(_KEYS[5], offset, offset + limit - 1)
+        payloads = self._client.lrange(CLAIM_KEYS[5], offset, offset + limit - 1)
         if not payloads:
             return []
-        counters = self._client.hmget(_KEYS[3], payloads)
+        counters = self._client.hmget(CLAIM_KEYS[3], payloads)
         result = []
         for raw_payload, raw_count in zip(payloads, counters, strict=True):
             try:

@@ -86,6 +86,27 @@ PostgreSQL is unavailable. These probes are intentionally unauthenticated and ex
 bounded status. The relay and worker let infrastructure errors terminate their process so
 Compose can restart them instead of hiding an unhealthy loop.
 
+### Operational health snapshot
+
+Operators with direct environment access can read a payload-free backlog snapshot from the running
+application image:
+
+```bash
+docker compose exec api python -m flowledger.operations
+```
+
+The one-line JSON report contains the undelivered PostgreSQL outbox count and oldest age in seconds,
+plus Redis pending, claimed, delayed, quarantined and exhausted cardinalities. Redis reads happen in
+one Lua invocation, so the five counts describe one queue instant. Each count defaults to a 10,000
+ceiling and includes `capped`; a value of 10,000 with `capped: true` means "at least 10,000," not an
+exact total. Pass a positive 32-bit override when a different ceiling is needed, for example
+`docker compose exec -e FLOWLEDGER_HEALTH_COUNT_LIMIT=5000 api python -m flowledger.operations`.
+
+The command never reads or emits command payloads, workflow names, tokens or claim IDs. It is an
+operator diagnostic, not a public HTTP endpoint or a readiness gate: a backlog can be nonzero while
+the service remains ready. Database, Redis, wrong-key-type and invalid-configuration errors terminate
+the command instead of returning a healthy-looking partial snapshot.
+
 ### Deployment quality gates
 
 Python, PostgreSQL and Redis image references retain readable version tags but are also pinned to

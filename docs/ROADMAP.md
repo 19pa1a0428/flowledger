@@ -82,8 +82,12 @@ will produce a finished feature. Work progresses only when the preceding increme
     rows without durable database execution receipts. Detect missing, identical and conflicting
     Redis receipts; explicitly requeue only missing stable commands, with convergence, outage,
     conflict and completed-command safety tests.
-27. NEXT: Add a read-only operational health snapshot for outbox backlog age and bounded Redis
-    pending, claimed, delayed, quarantined and exhausted counts without exposing payload contents.
+27. DONE: Add a read-only operational health snapshot for outbox backlog age and atomically sampled,
+    capped Redis pending, claimed, delayed, quarantined and exhausted counts. The operator CLI ships
+    in the existing application image, exposes no payload contents and fails on partial data-source
+    or Redis key-schema errors.
+28. NEXT: Add low-cardinality OpenTelemetry metrics for relay and worker outcomes plus queue/backlog
+    gauges, disabled by default and tested so telemetry failures cannot change business behavior.
 
 ## Working cadence
 

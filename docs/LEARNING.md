@@ -1,5 +1,52 @@
 # Learning journal
 
+## 2026-11-09 — Payload-free operational health snapshot
+
+Assistance: AI-assisted operational contract design, atomic Redis cardinality implementation,
+database age query, tests and documentation.
+
+Added `python -m flowledger.operations`, a read-only operator command that runs inside the existing
+application image. It reports the undelivered PostgreSQL outbox count and the age of its oldest row,
+then atomically samples Redis pending, claimed, delayed, quarantined and exhausted cardinalities.
+The Redis Lua script validates every queue key type before reading and returns only numbers. Counts
+are capped at a configurable ceiling and carry an explicit `capped` flag, so a large backlog does not
+look exact. Empty database backlogs report a null age instead of inventing zero seconds.
+
+The snapshot deliberately remains separate from liveness and readiness. A nonempty queue is useful
+operational evidence but does not mean the API is unable to serve traffic. Conversely, database,
+Redis, wrong-key-type and invalid-configuration failures propagate and make the command fail rather
+than presenting a partial report as healthy. The command does not read or emit payloads, workflow
+names, bearer tokens or claim IDs, and it does not add another service or public endpoint.
+
+Validation: after installing the declared project and test dependencies in the fresh runtime,
+Python 3.12 ran 144 tests: 122 passed and 22 live Redis contract variants were skipped because no
+disposable Redis URL was configured. Eight new test executions cover empty and delivered outboxes,
+oldest-row age, timezone validation, payload-free capped counts, Redis key-schema errors, invalid
+limits and the same count contract against the live-Redis test class. Bytecode compilation,
+deployment-pin verification and PostgreSQL offline migration generation passed. Vitest ran all 12
+frontend tests and the TypeScript/Vite production build passed (19 transformed modules; 203.59 kB
+JavaScript and 4.26 kB CSS before gzip). Docker is unavailable locally, so CI must provide the live
+Redis, PostgreSQL, image, Compose and recovery evidence.
+
+Limits: cardinalities and outbox age show backlog shape, not service objectives or root cause. The
+database and Redis reads are sequential, so they are not one cross-store transaction; only the five
+Redis counts share an atomic instant. Capped values are lower bounds, and this command does not page
+payloads, mutate work, trigger alerts, retain history or expose metrics to a collector.
+
+Exercise: stage three synthetic commands, relay one and claim it, then run the snapshot with
+`FLOWLEDGER_HEALTH_COUNT_LIMIT=2`. Identify which values are exact, which are capped lower bounds and
+why the outbox count differs from the Redis pending and claimed counts.
+
+Interview question: Why should operational backlog counts stay separate from a readiness probe?
+
+Answer outline: readiness answers whether the instance can serve its dependency-backed contract
+now; backlog size describes workload and capacity pressure. Making readiness fail on any queued work
+can restart healthy instances and amplify an incident. Alerting should use sustained, measured
+thresholds such as oldest age and growth rate, while readiness remains a narrow availability signal.
+
+Next: add low-cardinality OpenTelemetry outcome metrics and backlog gauges without coupling export
+success to workflow execution.
+
 ## 2026-11-07 — Guarded outbox reconciliation after Redis loss
 
 Assistance: AI-assisted recovery-boundary design, bounded reconciliation implementation,
