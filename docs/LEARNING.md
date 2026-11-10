@@ -25,8 +25,10 @@ oldest-row age, timezone validation, payload-free capped counts, Redis key-schem
 limits and the same count contract against the live-Redis test class. Bytecode compilation,
 deployment-pin verification and PostgreSQL offline migration generation passed. Vitest ran all 12
 frontend tests and the TypeScript/Vite production build passed (19 transformed modules; 203.59 kB
-JavaScript and 4.26 kB CSS before gzip). Docker is unavailable locally, so CI must provide the live
-Redis, PostgreSQL, image, Compose and recovery evidence.
+JavaScript and 4.26 kB CSS before gzip). Docker is unavailable locally, so no local container result
+is claimed. GitHub Actions run 42735757239 passed all seven jobs: Python 3.11–3.13 including the new
+live Redis snapshot contract, frontend tests/build, PostgreSQL plans, the container vulnerability
+scan and SBOM evidence, and Compose smoke plus the destructive restore drill.
 
 Limits: cardinalities and outbox age show backlog shape, not service objectives or root cause. The
 database and Redis reads are sequential, so they are not one cross-store transaction; only the five
