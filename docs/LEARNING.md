@@ -27,7 +27,10 @@ frequency and bounds, fail-closed optional configuration, and relay/worker busin
 under telemetry failure. Bytecode compilation, deployment-pin verification, PostgreSQL offline
 migration generation, all 12 frontend tests and the TypeScript/Vite production build also passed.
 Docker is unavailable locally, so the existing container smoke, live Redis/PostgreSQL checks,
-vulnerability scan and SBOM evidence remain GitHub Actions responsibilities.
+vulnerability scan and SBOM evidence remained GitHub Actions responsibilities. GitHub Actions run
+42938535558 then passed all seven jobs: live Redis on Python 3.11–3.13, frontend tests/build,
+PostgreSQL query plans, Compose API-to-worker smoke and destructive restore, and the container
+vulnerability scan with SBOM evidence.
 
 Limits: no collector, dashboard, retention policy or paging integration is bundled, and no live
 export is claimed. Counters describe observed process outcomes rather than globally unique commands;
