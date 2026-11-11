@@ -86,8 +86,13 @@ will produce a finished feature. Work progresses only when the preceding increme
     capped Redis pending, claimed, delayed, quarantined and exhausted counts. The operator CLI ships
     in the existing application image, exposes no payload contents and fails on partial data-source
     or Redis key-schema errors.
-28. NEXT: Add low-cardinality OpenTelemetry metrics for relay and worker outcomes plus queue/backlog
-    gauges, disabled by default and tested so telemetry failures cannot change business behavior.
+28. DONE: Add independently opt-in, low-cardinality OpenTelemetry metrics for relay, worker and
+    maintenance outcomes plus bounded queue/outbox gauges. Sampling is frequency-limited, contains
+    no payload identifiers, and source, instrument or exporter failures cannot change delivery or
+    execution behavior.
+29. NEXT: Add an optional local OpenTelemetry Collector Compose profile and integration smoke that
+    proves synthetic traces and metrics arrive without adding a public endpoint, paid backend or
+    business dependency on telemetry.
 
 ## Working cadence
 

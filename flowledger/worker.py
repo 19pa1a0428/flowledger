@@ -5,6 +5,7 @@ from typing import Protocol
 
 from flowledger.claims import MalformedCommandQuarantined, RedisClaimQueue
 from flowledger.jobs import SubmissionConflict
+from flowledger.metrics import APPLICATION_METRICS, FlowLedgerMetrics, HealthMetricSampler
 from flowledger.repository import SqlAlchemyRepository
 from flowledger.telemetry import extracted_context, tracer
 from opentelemetry.trace import SpanKind, Status as SpanStatus, StatusCode, Tracer
@@ -46,16 +47,19 @@ class WorkerLoopStats:
 
 
 def run_once(queue: RedisClaimQueue, repository: SqlAlchemyRepository,
-             lease_ms: int = 30_000, worker_tracer: Tracer | None = None) -> bool:
+             lease_ms: int = 30_000, worker_tracer: Tracer | None = None,
+             metric_sink: FlowLedgerMetrics | None = None) -> bool:
     """Commit before acknowledgement; back off reported database failures.
 
     False means idle. An expired acknowledgement is safe: redelivery checks the
     durable receipt. Recovery and due promotion must run periodically, even idle.
     Unexpected errors propagate and leave the claim for expiry recovery.
     """
+    metric_sink = APPLICATION_METRICS if metric_sink is None else metric_sink
     try:
         claim = queue.claim(lease_ms=lease_ms)
     except MalformedCommandQuarantined:
+        metric_sink.worker("quarantined_malformed")
         return True
     if claim is None:
         return False
@@ -78,18 +82,28 @@ def run_once(queue: RedisClaimQueue, repository: SqlAlchemyRepository,
             # execute has exited its transaction and rolled back. Do not retry within
             # a failed session, acknowledge failed work, or sleep holding a claim.
             queue.retry(claim.token)
+            metric_sink.worker("retry_scheduled")
             return True
         except SubmissionConflict as error:
             span.record_exception(error)
             span.set_status(SpanStatus(StatusCode.ERROR, "command quarantined"))
             queue.quarantine(claim.token, "command_id_conflict")
+            metric_sink.worker("quarantined_conflict")
             return True
-        queue.acknowledge(claim.token)
+        except Exception as error:
+            span.record_exception(error)
+            span.set_status(SpanStatus(StatusCode.ERROR, "worker execution failed"))
+            metric_sink.worker("error")
+            raise
+        acknowledged = queue.acknowledge(claim.token)
+        metric_sink.worker("completed" if acknowledged else "completed_ack_expired")
     return True
 
 
 def run_loop(queue: RedisClaimQueue, repository: SqlAlchemyRepository,
-             stop: StopSignal, config: WorkerLoopConfig | None = None) -> WorkerLoopStats:
+             stop: StopSignal, config: WorkerLoopConfig | None = None, *,
+             metric_sink: FlowLedgerMetrics | None = None,
+             health_sampler: HealthMetricSampler | None = None) -> WorkerLoopStats:
     """Run bounded maintenance and work cycles until graceful shutdown.
 
     The stop signal is checked between claims, never during a database transaction.
@@ -97,15 +111,22 @@ def run_loop(queue: RedisClaimQueue, repository: SqlAlchemyRepository,
     supervisor can restart the worker instead of hiding infrastructure failures.
     """
     config = config if config is not None else WorkerLoopConfig()
+    metric_sink = APPLICATION_METRICS if metric_sink is None else metric_sink
     cycles = handled = recovered = promoted = 0
     while not stop.is_set():
         cycles += 1
-        recovered += queue.recover_expired(limit=config.maintenance_batch_size)
-        promoted += queue.promote_due(limit=config.maintenance_batch_size)
+        cycle_recovered = queue.recover_expired(limit=config.maintenance_batch_size)
+        cycle_promoted = queue.promote_due(limit=config.maintenance_batch_size)
+        recovered += cycle_recovered
+        promoted += cycle_promoted
+        metric_sink.maintenance(recovered=cycle_recovered, promoted=cycle_promoted)
+        if health_sampler is not None:
+            health_sampler.capture_if_due()
 
         cycle_handled = 0
         while cycle_handled < config.work_batch_size and not stop.is_set():
-            if not run_once(queue, repository, lease_ms=config.lease_ms):
+            if not run_once(queue, repository, lease_ms=config.lease_ms,
+                            metric_sink=metric_sink):
                 break
             cycle_handled += 1
             handled += 1

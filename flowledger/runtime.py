@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 
 from flowledger.claims import RedisClaimQueue
 from flowledger.jobs import RedisSubmissionQueue
+from flowledger.metrics import APPLICATION_METRICS, HealthMetricSampler
 from flowledger.outbox import relay_pending
 from flowledger.repository import SqlAlchemyRepository, build_session_factory
 from flowledger.worker import WorkerLoopConfig, run_loop
@@ -22,6 +23,7 @@ class RuntimeConfig:
     batch_size: int = 100
     idle_wait_seconds: float = 1.0
     lease_ms: int = 30_000
+    metrics_interval_seconds: float = 30.0
 
     @classmethod
     def from_environment(cls) -> "RuntimeConfig":
@@ -33,19 +35,28 @@ class RuntimeConfig:
             batch_size = int(os.getenv("FLOWLEDGER_BATCH_SIZE", "100"))
             idle_wait = float(os.getenv("FLOWLEDGER_IDLE_WAIT_SECONDS", "1"))
             lease_ms = int(os.getenv("FLOWLEDGER_LEASE_MS", "30000"))
+            metrics_interval = float(os.getenv("FLOWLEDGER_METRICS_INTERVAL_SECONDS", "30"))
         except ValueError as error:
             raise ValueError("Runtime tuning values must be numeric") from error
         # Reuse the worker's bounded validation for every long-running process.
         WorkerLoopConfig(batch_size, batch_size, lease_ms, idle_wait)
-        return cls(database_url, redis_url, batch_size, idle_wait, lease_ms)
+        if (not 1 <= metrics_interval <= 3_600):
+            raise ValueError("Metric interval must be between 1 and 3600 seconds")
+        return cls(database_url, redis_url, batch_size, idle_wait, lease_ms,
+                   metrics_interval)
 
 
 def run_relay_loop(sessions, queue, stop, *, batch_size: int = 100,
-                   idle_wait_seconds: float = 1.0) -> None:
+                   idle_wait_seconds: float = 1.0, metric_sink=None,
+                   health_sampler: HealthMetricSampler | None = None) -> None:
     """Relay bounded outbox batches until a graceful shutdown is requested."""
     WorkerLoopConfig(batch_size, batch_size, 30_000, idle_wait_seconds)
+    metric_sink = APPLICATION_METRICS if metric_sink is None else metric_sink
     while not stop.is_set():
-        delivered = relay_pending(sessions, queue, limit=batch_size)
+        delivered = relay_pending(sessions, queue, limit=batch_size,
+                                  metric_sink=metric_sink)
+        if health_sampler is not None:
+            health_sampler.capture_if_due()
         if delivered < batch_size:
             stop.wait(idle_wait_seconds)
 
@@ -64,15 +75,23 @@ def main(argv: list[str] | None = None) -> int:
     config = RuntimeConfig.from_environment()
     sessions = build_session_factory(create_engine(config.database_url))
     client = Redis.from_url(config.redis_url)
+    claim_queue = RedisClaimQueue(client)
+    sampler = HealthMetricSampler(
+        APPLICATION_METRICS, sessions, claim_queue,
+        interval_seconds=config.metrics_interval_seconds,
+    )
     stop = _stop_event()
     if args.service == "relay":
         run_relay_loop(sessions, RedisSubmissionQueue(client), stop,
                        batch_size=config.batch_size,
-                       idle_wait_seconds=config.idle_wait_seconds)
+                       idle_wait_seconds=config.idle_wait_seconds,
+                       metric_sink=APPLICATION_METRICS,
+                       health_sampler=sampler)
     else:
-        run_loop(RedisClaimQueue(client), SqlAlchemyRepository(sessions), stop,
+        run_loop(claim_queue, SqlAlchemyRepository(sessions), stop,
                  WorkerLoopConfig(config.batch_size, config.batch_size,
-                                  config.lease_ms, config.idle_wait_seconds))
+                                  config.lease_ms, config.idle_wait_seconds),
+                 metric_sink=APPLICATION_METRICS, health_sampler=sampler)
     return 0
 
 

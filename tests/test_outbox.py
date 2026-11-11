@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 from fakeredis import FakeRedis
@@ -12,6 +12,7 @@ from flowledger.claims import RedisClaimQueue
 from flowledger.database import Base, CommandReceipt, OutboxRecord, WorkflowRecord, EventRecord
 from flowledger.domain import Workflow
 from flowledger.jobs import RedisSubmissionQueue, WorkerCommand, SubmissionConflict
+from flowledger.metrics import FlowLedgerMetrics
 from flowledger.outbox import reconcile_delivered, relay_pending
 from flowledger.repository import SqlAlchemyRepository, build_session_factory
 from flowledger.worker import run_once
@@ -55,6 +56,22 @@ class OutboxTests(unittest.TestCase):
         with self.assertRaises(ConnectionError):
             relay_pending(self.sessions, broken)
         self.assertEqual(relay_pending(self.sessions, self.queue), 1)
+
+    def test_metric_failure_does_not_change_relay_delivery(self):
+        command = self.stage()
+        meter = Mock()
+        broken_counter = Mock()
+        broken_counter.add.side_effect = RuntimeError("synthetic telemetry failure")
+        meter.create_counter.return_value = broken_counter
+        meter.create_gauge.return_value = Mock()
+        metrics = FlowLedgerMetrics(meter, enabled=True)
+
+        with patch("flowledger.metrics.LOGGER.exception") as logged:
+            self.assertEqual(relay_pending(self.sessions, self.queue, metric_sink=metrics), 1)
+        logged.assert_called_once()
+        self.assertEqual(self.redis.llen("flowledger:{jobs}:pending"), 1)
+        with self.sessions() as session:
+            self.assertIsNotNone(session.get(OutboxRecord, command.command_id).delivered_at)
 
     def test_crash_after_redis_acceptance_replays_without_second_enqueue(self):
         self.stage()

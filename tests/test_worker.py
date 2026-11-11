@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import uuid4
 import unittest
 
@@ -11,6 +11,7 @@ from flowledger.claims import RedisClaimQueue
 from flowledger.database import CommandReceipt
 from flowledger.domain import Status
 from flowledger.jobs import SubmissionConflict, WorkerCommand
+from flowledger.metrics import FlowLedgerMetrics
 from flowledger.repository import SqlAlchemyRepository, ConcurrencyConflict
 from flowledger.worker import run_once
 from tests import test_outbox
@@ -19,6 +20,21 @@ from tests import test_outbox
 class WorkerTests(unittest.TestCase):
     setUp = test_outbox.OutboxTests.setUp
     stage = test_outbox.OutboxTests.stage
+    def test_metric_failure_does_not_change_worker_execution(self):
+        command = self.stage()
+        self.queue.submit(command)
+        meter = Mock()
+        broken_counter = Mock()
+        broken_counter.add.side_effect = RuntimeError("synthetic telemetry failure")
+        meter.create_counter.return_value = broken_counter
+        meter.create_gauge.return_value = Mock()
+        metrics = FlowLedgerMetrics(meter, enabled=True)
+
+        with patch("flowledger.metrics.LOGGER.exception") as logged:
+            self.assertTrue(run_once(RedisClaimQueue(self.redis), self.repo,
+                                     metric_sink=metrics))
+        logged.assert_called_once()
+        self.assertEqual(self.repo.get(command.workflow_id).version, 1)
     def test_replay_after_restart_and_payload_conflict(self):
         command = self.stage()
         self.assertTrue(self.repo.execute(command))

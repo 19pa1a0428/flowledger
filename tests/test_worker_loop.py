@@ -36,7 +36,7 @@ class WorkerLoopTests(unittest.TestCase):
         self.assertEqual(result, WorkerLoopStats(1, 0, 2, 1))
         queue.recover_expired.assert_called_once_with(limit=7)
         queue.promote_due.assert_called_once_with(limit=7)
-        poll.assert_called_once_with(queue, ANY, lease_ms=30_000)
+        poll.assert_called_once_with(queue, ANY, lease_ms=30_000, metric_sink=ANY)
         self.assertEqual(stop.waits, [0.25])
 
     def test_full_batch_yields_to_maintenance_without_idle_wait(self):

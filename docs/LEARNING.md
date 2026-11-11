@@ -1,5 +1,53 @@
 # Learning journal
 
+## 2026-11-10 — Fail-safe low-cardinality operations metrics
+
+Assistance: AI-assisted metric-boundary design, runtime integration, failure-injection tests and
+documentation.
+
+Added an independently opt-in OpenTelemetry metric pipeline for the existing relay and worker
+processes. Fixed-cardinality counters report relay submission/replay/error, worker completion,
+expired acknowledgement, scheduled retry, quarantine and error outcomes, plus recovered and
+promoted maintenance work. Frequency-bounded gauges reuse the payload-free health snapshot for
+outbox pending count, oldest pending age and capped Redis queue-state depths. Metric attributes are
+limited to enumerated outcomes, queue states and booleans; command/workflow IDs, names, payloads,
+claim tokens and bearer tokens are excluded.
+
+Tracing and metrics have separate enable flags and OTLP endpoints. Disabled metrics do not query
+PostgreSQL or Redis. When enabled, health-source and instrument failures are logged and absorbed;
+the relay and worker still preserve their existing transaction, acknowledgement and error
+contracts. Fault-injection tests prove a raising metric instrument does not prevent an outbox row
+from being delivered or a workflow command from committing. The sampler uses a monotonic clock and
+enforces a 1–3,600 second interval so busy loops do not create unbounded health queries.
+
+Validation: Python 3.12 ran 153 tests: 131 passed and 22 live Redis variants were skipped because no
+disposable Redis URL was configured. Nine new test executions cover fixed low-cardinality
+attributes, bounded payload-free gauges, disabled behavior, source/instrument failures, sampler
+frequency and bounds, fail-closed optional configuration, and relay/worker business continuity
+under telemetry failure. Bytecode compilation, deployment-pin verification, PostgreSQL offline
+migration generation, all 12 frontend tests and the TypeScript/Vite production build also passed.
+Docker is unavailable locally, so the existing container smoke, live Redis/PostgreSQL checks,
+vulnerability scan and SBOM evidence remain GitHub Actions responsibilities.
+
+Limits: no collector, dashboard, retention policy or paging integration is bundled, and no live
+export is claimed. Counters describe observed process outcomes rather than globally unique commands;
+a crash can lose buffered telemetry, and replay is intentionally counted as a relay outcome. Gauges
+are periodic, cross-store reads are not one transaction, and capped Redis values are lower bounds.
+
+Exercise: inject a fake meter whose worker counter raises, process one synthetic command, and verify
+the workflow version still advances. Then explain why the telemetry exception is logged but not
+allowed to influence acknowledgement.
+
+Interview question: Why avoid command or workflow IDs as metric attributes even though they help
+debug one request?
+
+Answer outline: unique IDs create unbounded metric-cardinality growth, increasing collector and
+backend cost and degrading query performance. Metrics should aggregate bounded operational states;
+individual execution correlation belongs in traces and controlled logs.
+
+Next: add an optional local Collector profile and integration smoke so export can be demonstrated
+without making telemetry part of the business path or provisioning a paid backend.
+
 ## 2026-11-09 — Payload-free operational health snapshot
 
 Assistance: AI-assisted operational contract design, atomic Redis cardinality implementation,

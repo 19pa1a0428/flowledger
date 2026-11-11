@@ -296,7 +296,7 @@ The transition body is shaped like
 the returned `version` for the next request; on `409`, fetch the latest workflow before
 deciding whether to retry.
 
-## OpenTelemetry tracing
+## OpenTelemetry tracing and metrics
 
 Tracing is disabled by default. Enable OTLP/HTTP export independently in each API and worker
 process; an absent or invalid optional exporter configuration is logged and does not prevent
@@ -319,6 +319,30 @@ tokens and workflow names are deliberately excluded.
 No collector is bundled and no live export is claimed. Export uses a background batch processor;
 telemetry loss or exporter failure must not change workflow results. Configure standard
 OpenTelemetry sampler variables when production volume requires sampling.
+
+Operational metrics use a separate, independently disabled OTLP/HTTP pipeline so trace and metric
+endpoints cannot be confused. Enable it only in the relay and worker processes that should report
+outcomes and backlog state:
+
+```bash
+export FLOWLEDGER_OTEL_METRICS_ENABLED=true
+export FLOWLEDGER_OTEL_METRICS_ENDPOINT=http://localhost:4318/v1/metrics
+export FLOWLEDGER_OTEL_METRICS_EXPORT_INTERVAL_MS=30000
+export FLOWLEDGER_METRICS_INTERVAL_SECONDS=30
+```
+
+`flowledger.relay.commands` and `flowledger.worker.commands` are counters with fixed `outcome`
+values. `flowledger.worker.maintenance` records recovered and promoted work. The sampled gauges are
+`flowledger.outbox.pending`, `flowledger.outbox.oldest_age`, and `flowledger.queue.depth`; queue
+depth has only the fixed `state` values `pending`, `claimed`, `delayed`, `quarantined`, and
+`exhausted`, plus the boolean `capped` attribute. No command IDs, workflow IDs, names, payloads,
+claim tokens, or bearer tokens are metric attributes.
+
+Health sampling is bounded to once per configured interval even while a worker is busy. It reuses
+the payload-free snapshot contract above, including capped Redis counts. Metric configuration,
+collection, and instrument failures are logged and absorbed: they cannot roll back delivery,
+execution, acknowledgement, or maintenance. No collector or dashboard is bundled, and an enabled
+exporter does not turn telemetry delivery into a business-transaction dependency.
 
 ## Redis command submission
 

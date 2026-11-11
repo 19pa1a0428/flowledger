@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from flowledger.database import CommandReceipt, OutboxRecord
 from flowledger.jobs import WorkerCommand
+from flowledger.metrics import APPLICATION_METRICS, FlowLedgerMetrics
 from flowledger.repository import SessionFactory
 
 
@@ -31,7 +32,8 @@ class ReconciliationReport:
     conflict_ids: tuple[UUID, ...]
 
 
-def relay_pending(sessions: SessionFactory, queue: SubmissionQueue, *, limit: int = 100) -> int:
+def relay_pending(sessions: SessionFactory, queue: SubmissionQueue, *, limit: int = 100,
+                  metric_sink: FlowLedgerMetrics | None = None) -> int:
     """Mark delivery only after Redis accepts or recognizes the identical command.
 
     A crash after submission leaves the row pending. Replaying its stable command ID
@@ -40,6 +42,7 @@ def relay_pending(sessions: SessionFactory, queue: SubmissionQueue, *, limit: in
     """
     if type(limit) is not int or not 1 <= limit <= 1000:
         raise ValueError("limit must be an integer between 1 and 1000")
+    metric_sink = APPLICATION_METRICS if metric_sink is None else metric_sink
     with sessions() as session:
         ids = list(session.scalars(
             select(OutboxRecord.command_id)
@@ -55,7 +58,12 @@ def relay_pending(sessions: SessionFactory, queue: SubmissionQueue, *, limit: in
             command = WorkerCommand.model_validate_json(row.payload)
             if command.command_id != row.command_id:
                 raise ValueError("Outbox command ID does not match payload")
-            queue.submit(command)
+            try:
+                submitted = queue.submit(command)
+            except Exception:
+                metric_sink.relay("error")
+                raise
+            metric_sink.relay("submitted" if submitted else "replayed")
             row.delivered_at = datetime.now(timezone.utc)
         delivered += 1
     return delivered
