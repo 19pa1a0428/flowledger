@@ -26,11 +26,11 @@ full-suite attempt correctly failed at import time. Python 3.12 then ran 158 tes
 live Redis variants were skipped because no disposable local Redis URL was configured. YAML parsing,
 bytecode compilation, deployment-pin verification, PostgreSQL offline migration generation, all 12
 frontend tests and the TypeScript/Vite production build passed. Docker is unavailable locally, so
-the real Collector ingestion proof, existing Compose smoke/restore and container scan must be
-validated by GitHub Actions; no local container result is claimed. The first Actions run reached
-the Collector profile but exposed an import-path difference in the documented direct-script entry
-point before the assertions ran. The follow-up keeps both direct execution and package imports
-valid, and its correlation fixture now mirrors Compose-prefixed Collector output.
+no local container result is claimed. The first Actions run reached the Collector profile but
+exposed an import-path difference in the documented direct-script entry point before the assertions
+ran. The follow-up keeps both direct execution and package imports valid, and its correlation fixture
+now mirrors Compose-prefixed Collector output. The corrected Actions run passed all seven jobs,
+including the real Collector ingestion proof, existing Compose smoke/restore and container scan.
 
 Limits: debug output is ephemeral and may contain trace attributes, so the profile is restricted to
 synthetic local data. Seeing expected names proves that this Collector received and processed one
