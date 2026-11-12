@@ -1,0 +1,41 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector:0.165.0@sha256:34b24b740c3c88d3467740e8642a397c13898ef76d7295c5425164c482ed1b73
+    profiles: ["telemetry"]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./ops/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    restart: unless-stopped
+
+  api:
+    environment:
+      FLOWLEDGER_OTEL_ENABLED: "true"
+      FLOWLEDGER_OTEL_ENDPOINT: http://otel-collector:4318/v1/traces
+      FLOWLEDGER_OTEL_SERVICE_NAME: flowledger-api
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  relay:
+    environment:
+      FLOWLEDGER_OTEL_METRICS_ENABLED: "true"
+      FLOWLEDGER_OTEL_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
+      FLOWLEDGER_OTEL_METRICS_EXPORT_INTERVAL_MS: "1000"
+      FLOWLEDGER_METRICS_INTERVAL_SECONDS: "1"
+      FLOWLEDGER_OTEL_SERVICE_NAME: flowledger-relay
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  worker:
+    environment:
+      FLOWLEDGER_OTEL_ENABLED: "true"
+      FLOWLEDGER_OTEL_ENDPOINT: http://otel-collector:4318/v1/traces
+      FLOWLEDGER_OTEL_METRICS_ENABLED: "true"
+      FLOWLEDGER_OTEL_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
+      FLOWLEDGER_OTEL_METRICS_EXPORT_INTERVAL_MS: "1000"
+      FLOWLEDGER_METRICS_INTERVAL_SECONDS: "1"
+      FLOWLEDGER_OTEL_SERVICE_NAME: flowledger-worker
+    depends_on:
+      otel-collector:
+        condition: service_started

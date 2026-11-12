@@ -1,5 +1,53 @@
 # Learning journal
 
+## 2026-11-11 — Optional local OpenTelemetry ingestion proof
+
+Assistance: AI-assisted Collector boundary design, Compose integration, evidence-smoke implementation,
+tests and documentation.
+
+Added a separate `compose.otel.yaml` override with an explicit `telemetry` profile. The profile runs
+the official OpenTelemetry Collector 0.165.0 image pinned to its reviewed multi-platform digest,
+enables the existing opt-in exporters in the API, relay and worker, and routes both OTLP/HTTP traces
+and metrics over the private Compose network. The Collector has no host port, remote exporter or
+persistent storage. Its detailed debug exporter exists only to make bounded synthetic evidence
+inspectable; ordinary `docker compose up` still starts no Collector and leaves telemetry disabled.
+
+Added `scripts/telemetry_smoke.py`. It creates one synthetic workflow, waits for the worker to apply
+the initial command, then polls Collector logs for the API server span and worker consumer span
+sharing one trace ID, relay/worker outcome counters and queue-depth gauge. The smoke requires every
+fixed signal name and fails on missing worker progress, broken correlation or partial telemetry.
+Unit tests cover complete, delayed and missing evidence, bounded attempts and the exact read-only
+Compose-log invocation. Deployment
+verification now rejects an unpinned Collector image, and CI runs the proof after the existing
+Compose smoke and destructive PostgreSQL restore.
+
+Validation: the declared project dependencies were installed in the fresh runtime after the first
+full-suite attempt correctly failed at import time. Python 3.12 then ran 158 tests: 136 passed and 22
+live Redis variants were skipped because no disposable local Redis URL was configured. YAML parsing,
+bytecode compilation, deployment-pin verification, PostgreSQL offline migration generation, all 12
+frontend tests and the TypeScript/Vite production build passed. Docker is unavailable locally, so
+the real Collector ingestion proof, existing Compose smoke/restore and container scan must be
+validated by GitHub Actions; no local container result is claimed.
+
+Limits: debug output is ephemeral and may contain trace attributes, so the profile is restricted to
+synthetic local data. Seeing expected names proves that this Collector received and processed one
+test flow; it does not prove durable retention, alert delivery, production sampling correctness,
+capacity, high availability or a remote observability backend.
+
+Exercise: start the telemetry profile, run `python scripts/telemetry_smoke.py`, then remove
+`flowledger.worker.commands` from the smoke evidence tuple and explain why weakening the assertion
+would allow incomplete instrumentation to look healthy.
+
+Interview question: Why keep the Collector in a separate Compose profile instead of making it a
+required dependency of every local startup?
+
+Answer outline: telemetry is diagnostic, not part of the business transaction. An explicit profile
+keeps the default stack smaller, proves the application still runs when telemetry is absent, and
+prevents Collector failure from blocking API, relay or worker availability.
+
+Next: add a deterministic local alert-policy evaluator over sustained backlog and terminal-queue
+signals, without sending real notifications.
+
 ## 2026-11-10 — Fail-safe low-cardinality operations metrics
 
 Assistance: AI-assisted metric-boundary design, runtime integration, failure-injection tests and

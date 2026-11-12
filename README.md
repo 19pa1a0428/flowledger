@@ -316,9 +316,9 @@ keeps API and worker work in one trace while preserving the stable payload requi
 deduplication after relay crashes. Spans include command/workflow IDs, expected version and target;
 tokens and workflow names are deliberately excluded.
 
-No collector is bundled and no live export is claimed. Export uses a background batch processor;
-telemetry loss or exporter failure must not change workflow results. Configure standard
-OpenTelemetry sampler variables when production volume requires sampling.
+No collector starts with the default Compose stack and no remote export is claimed. Export uses a
+background batch processor; telemetry loss or exporter failure must not change workflow results.
+Configure standard OpenTelemetry sampler variables when production volume requires sampling.
 
 Operational metrics use a separate, independently disabled OTLP/HTTP pipeline so trace and metric
 endpoints cannot be confused. Enable it only in the relay and worker processes that should report
@@ -341,8 +341,35 @@ claim tokens, or bearer tokens are metric attributes.
 Health sampling is bounded to once per configured interval even while a worker is busy. It reuses
 the payload-free snapshot contract above, including capped Redis counts. Metric configuration,
 collection, and instrument failures are logged and absorbed: they cannot roll back delivery,
-execution, acknowledgement, or maintenance. No collector or dashboard is bundled, and an enabled
-exporter does not turn telemetry delivery into a business-transaction dependency.
+execution, acknowledgement, or maintenance. No Collector is required and no dashboard is bundled;
+an enabled exporter does not turn telemetry delivery into a business-transaction dependency.
+
+### Optional local Collector proof
+
+The `telemetry` Compose profile adds a digest-pinned OpenTelemetry Collector with only an internal
+OTLP/HTTP receiver and the detailed debug exporter. It publishes no host port, persists no telemetry
+and sends nothing to a remote backend. Start it only with the explicit override and profile:
+
+```bash
+docker compose --env-file .env -f compose.yaml -f compose.otel.yaml \
+  --profile telemetry up --build --detach --wait
+python scripts/telemetry_smoke.py
+```
+
+The smoke creates one synthetic workflow, waits for worker execution, then checks Collector output
+for API and worker spans sharing one trace ID plus relay, worker and queue-depth metric names. It
+never accepts a partial signal set as success. Inspect the local evidence or stop the profile with:
+
+```bash
+docker compose --env-file .env -f compose.yaml -f compose.otel.yaml \
+  --profile telemetry logs --no-color otel-collector
+docker compose --env-file .env -f compose.yaml -f compose.otel.yaml \
+  --profile telemetry down
+```
+
+Detailed debug output can include trace attributes, so use synthetic local data only. This is an
+ingestion proof, not a dashboard, retention system, production collector topology or availability
+guarantee. The default `docker compose up` remains collector-free and telemetry remains optional.
 
 ## Redis command submission
 

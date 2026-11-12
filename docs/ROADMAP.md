@@ -90,9 +90,12 @@ will produce a finished feature. Work progresses only when the preceding increme
     maintenance outcomes plus bounded queue/outbox gauges. Sampling is frequency-limited, contains
     no payload identifiers, and source, instrument or exporter failures cannot change delivery or
     execution behavior.
-29. NEXT: Add an optional local OpenTelemetry Collector Compose profile and integration smoke that
-    proves synthetic traces and metrics arrive without adding a public endpoint, paid backend or
-    business dependency on telemetry.
+29. DONE: Add an optional, digest-pinned local OpenTelemetry Collector Compose profile with no host
+    ports or remote backend. A bounded integration smoke requires correlated API/worker spans and
+    relay/worker/backlog metrics in Collector output while the default stack stays collector-free.
+30. NEXT: Add a deterministic, read-only alert-policy evaluator for sustained oldest-outbox age and
+    quarantine/exhaustion growth, with explicit recovery hysteresis, bounded synthetic input and no
+    external paging or notification side effects.
 
 ## Working cadence
 

@@ -7,8 +7,9 @@ EXPECTED = {
     "python:3.12-slim": "4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54",
     "postgres:17-alpine": "5d9ee39acd134b44f52fc49ca3b88fc651f0560b0db93292fcd37ff150c71d3a",
     "redis:7.4-alpine": "c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b",
+    "otel/opentelemetry-collector:0.165.0": "34b24b740c3c88d3467740e8642a397c13898ef76d7295c5425164c482ed1b73",
 }
-FILES = ("Dockerfile", "compose.yaml", ".github/workflows/tests.yml")
+FILES = ("Dockerfile", "compose.yaml", "compose.otel.yaml", ".github/workflows/tests.yml")
 EXPECTED_OS_PATCHES = (
     "zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1",
 )

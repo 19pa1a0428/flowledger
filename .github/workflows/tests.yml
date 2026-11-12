@@ -79,10 +79,19 @@ jobs:
       - run: docker compose --env-file .env.example up --build --detach --wait
       - run: python scripts/compose_smoke.py
       - run: python -m scripts.restore_drill --confirm-disposable
+      - name: Start optional telemetry profile
+        run: >-
+          docker compose --env-file .env.example -f compose.yaml -f compose.otel.yaml
+          --profile telemetry up --build --detach --wait
+      - run: python scripts/telemetry_smoke.py
       - if: always()
-        run: docker compose --env-file .env.example logs --no-color
+        run: >-
+          docker compose --env-file .env.example -f compose.yaml -f compose.otel.yaml
+          --profile telemetry logs --no-color
       - if: always()
-        run: docker compose --env-file .env.example down --volumes
+        run: >-
+          docker compose --env-file .env.example -f compose.yaml -f compose.otel.yaml
+          --profile telemetry down --volumes
   supply-chain:
     runs-on: ubuntu-latest
     steps:

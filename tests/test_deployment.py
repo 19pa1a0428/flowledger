@@ -12,6 +12,17 @@ class DeploymentTests(TestCase):
     def test_repository_deployment_images_are_immutable(self):
         verify(Path(__file__).resolve().parents[1])
 
+    def test_optional_collector_is_profiled_and_not_host_published(self):
+        root = Path(__file__).resolve().parents[1]
+        override = (root / "compose.otel.yaml").read_text(encoding="utf-8")
+        config = (root / "ops/otel-collector.yaml").read_text(encoding="utf-8")
+
+        self.assertIn('profiles: ["telemetry"]', override)
+        self.assertNotIn("ports:", override)
+        self.assertIn("http://otel-collector:4318/v1/traces", override)
+        self.assertIn("http://otel-collector:4318/v1/metrics", override)
+        self.assertIn("verbosity: detailed", config)
+
     def test_unpinned_image_is_rejected(self):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory:
