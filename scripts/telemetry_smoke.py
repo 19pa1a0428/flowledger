@@ -4,7 +4,13 @@ import re
 import subprocess
 import time
 
-from scripts.compose_smoke import request
+if __package__:
+    from scripts.compose_smoke import request
+else:
+    # ``python scripts/telemetry_smoke.py`` places scripts/, not the repository
+    # root, on sys.path. Keep the documented and CI entry point importable while
+    # retaining package imports for unit tests.
+    from compose_smoke import request
 
 
 COMPOSE = (
@@ -34,8 +40,11 @@ def collector_logs() -> str:
 def _trace_ids(logs: str, span_name: str) -> set[str]:
     trace_ids = set()
     for block in re.split(r"(?=Span #\d+)", logs):
-        name = re.search(r"^\s*Name\s*:\s*(.+?)\s*$", block, re.MULTILINE)
-        trace_id = re.search(r"^\s*Trace ID\s*:\s*([0-9a-fA-F]+)\s*$",
+        # Compose prefixes every container log line (``service |``), while a
+        # captured fixture or direct Collector log does not. Match the fields
+        # themselves so both representations prove the same correlation.
+        name = re.search(r"\bName\s*:\s*(.+?)\s*$", block, re.MULTILINE)
+        trace_id = re.search(r"\bTrace ID\s*:\s*([0-9a-fA-F]+)\s*$",
                              block, re.MULTILINE)
         if name is not None and trace_id is not None and name.group(1) == span_name:
             trace_ids.add(trace_id.group(1).lower())

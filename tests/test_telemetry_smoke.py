@@ -8,17 +8,17 @@ from scripts.telemetry_smoke import (
 
 
 COMPLETE_LOGS = """
-Resource attributes: service.name: Str(flowledger-api)
-Span #0
-    Trace ID       : aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-    Name           : HTTP POST /workflows
-Resource attributes: service.name: Str(flowledger-worker)
-Span #1
-    Trace ID       : aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-    Name           : worker.execute
-flowledger.relay.commands
-flowledger.worker.commands
-flowledger.queue.depth
+otel-collector-1  | Resource attributes: service.name: Str(flowledger-api)
+otel-collector-1  | Span #0
+otel-collector-1  |     Trace ID       : aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+otel-collector-1  |     Name           : HTTP POST /workflows
+otel-collector-1  | Resource attributes: service.name: Str(flowledger-worker)
+otel-collector-1  | Span #1
+otel-collector-1  |     Trace ID       : aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+otel-collector-1  |     Name           : worker.execute
+otel-collector-1  | flowledger.relay.commands
+otel-collector-1  | flowledger.worker.commands
+otel-collector-1  | flowledger.queue.depth
 """
 
 
