@@ -25,7 +25,9 @@ full-suite attempt stopped at imports; after installing the pinned project extra
 was configured. Bytecode compilation, deployment-pin verification, PostgreSQL offline migration
 generation, all 12 frontend tests and the TypeScript/Vite production build passed. Docker is not
 available locally, so Compose, container-scan and real-service checks remain GitHub Actions work and
-are not claimed here.
+are not claimed locally. GitHub Actions run 43343282278 passed all seven jobs: Python 3.11–3.13 with
+live Redis variants, frontend tests/build, PostgreSQL plan gates, the Compose API-to-worker smoke,
+Collector ingestion and destructive restore, plus the container scan and SBOM evidence.
 
 Limits: thresholds are examples, not production service objectives. Policy state exists only for one
 evaluation and is not durable across invocations. Synthetic exact counts do not model capped live
