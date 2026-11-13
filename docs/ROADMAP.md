@@ -93,9 +93,13 @@ will produce a finished feature. Work progresses only when the preceding increme
 29. DONE: Add an optional, digest-pinned local OpenTelemetry Collector Compose profile with no host
     ports or remote backend. A bounded integration smoke requires correlated API/worker spans and
     relay/worker/backlog metrics in Collector output while the default stack stays collector-free.
-30. NEXT: Add a deterministic, read-only alert-policy evaluator for sustained oldest-outbox age and
-    quarantine/exhaustion growth, with explicit recovery hysteresis, bounded synthetic input and no
-    external paging or notification side effects.
+30. DONE: Add a deterministic, read-only alert-policy evaluator for sustained oldest-outbox age and
+    quarantine/exhaustion growth. Independent state machines require consecutive breaches and
+    explicit recovery hysteresis; bounded, strictly ordered synthetic input produces structured JSON
+    without reading services or sending notifications.
+31. NEXT: Add an opt-in local monitor in the existing application image that periodically feeds the
+    payload-free health snapshot into the proven policy state machine, emits structured stdout only,
+    handles graceful shutdown and sampling failures explicitly, and remains separate from readiness.
 
 ## Working cadence
 

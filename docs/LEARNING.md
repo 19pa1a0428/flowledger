@@ -1,5 +1,52 @@
 # Learning journal
 
+## 2026-11-12 — Deterministic alert-policy rehearsal
+
+Assistance: AI-assisted policy-state design, bounded-input implementation, tests and documentation.
+
+Added `python -m flowledger.alerting` as a pure evaluator over a synthetic JSON sample sequence. Two
+independent state machines examine oldest-undelivered-outbox age and positive growth in quarantined
+plus exhausted queue counts. A signal must breach for a configured number of consecutive samples
+before firing; once firing, it needs a separately configured healthy streak before recovery. This
+recovery hysteresis avoids clearing on one transient improvement. Terminal growth uses the positive
+delta of the combined terminal-queue count between strictly ordered samples, so the first sample is
+only a baseline and movement between queue categories cannot masquerade as new terminal work.
+
+The evaluator reads at most 1 MB and 1,000 samples, requires timezone-aware increasing timestamps,
+rejects booleans, negative counts and malformed shapes, and emits deterministic structured JSON.
+It has no PostgreSQL, Redis, OpenTelemetry, HTTP, paging or notification integration. Tests cover
+sustained firing and recovery, intermittent breaches, independent alert state, positive-delta
+semantics, validation and size bounds, plus the command-line JSON contract.
+
+Validation: the focused evaluator suite passed all eight tests. The fresh Python runtime initially
+lacked the repository's declared SQLAlchemy, Redis, Alembic and test dependencies, so that first
+full-suite attempt stopped at imports; after installing the pinned project extras, Python 3.12 ran
+166 tests: 144 passed and 22 live-Redis variants were skipped because no disposable local Redis URL
+was configured. Bytecode compilation, deployment-pin verification, PostgreSQL offline migration
+generation, all 12 frontend tests and the TypeScript/Vite production build passed. Docker is not
+available locally, so Compose, container-scan and real-service checks remain GitHub Actions work and
+are not claimed here.
+
+Limits: thresholds are examples, not production service objectives. Policy state exists only for one
+evaluation and is not durable across invocations. Synthetic exact counts do not model capped live
+health values, clock gaps or data-source outages. The evaluator proves deterministic state semantics;
+it does not prove an on-call process, delivery reliability or that an alert is actionable.
+
+Exercise: evaluate five samples that breach outbox age three times and then recover twice. Change
+`--recovery-samples` from two to one and compare the transition sequence; explain which version is
+more resistant to alert flapping.
+
+Interview question: Why use separate consecutive-sample thresholds for firing and recovery instead
+of one numeric threshold?
+
+Answer outline: activation needs persistence so a single spike does not page, while recovery needs
+independent evidence that the incident has actually cleared. Separate streaks add temporal hysteresis:
+the policy can react promptly to sustained harm without oscillating when a signal hovers near its
+threshold. Duration-based production rules would additionally need trustworthy sampling cadence.
+
+Next: connect the proven state machine to periodic payload-free local snapshots with structured
+stdout only, graceful shutdown and explicit sampling-failure behavior.
+
 ## 2026-11-11 — Optional local OpenTelemetry ingestion proof
 
 Assistance: AI-assisted Collector boundary design, Compose integration, evidence-smoke implementation,

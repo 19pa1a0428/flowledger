@@ -107,6 +107,30 @@ operator diagnostic, not a public HTTP endpoint or a readiness gate: a backlog c
 the service remains ready. Database, Redis, wrong-key-type and invalid-configuration errors terminate
 the command instead of returning a healthy-looking partial snapshot.
 
+### Offline alert-policy evaluation
+
+`python -m flowledger.alerting synthetic-alerts.json` evaluates a bounded JSON array of synthetic
+operational samples. It does not connect to PostgreSQL, Redis, OpenTelemetry or a notification
+provider. Each sample contains a timezone-aware `observed_at`, nullable
+`oldest_outbox_age_seconds`, and exact nonnegative `quarantined` and `exhausted` counts:
+
+```json
+[
+  {"observed_at":"2026-11-12T18:00:00-06:00","oldest_outbox_age_seconds":300,"quarantined":0,"exhausted":0},
+  {"observed_at":"2026-11-12T18:01:00-06:00","oldest_outbox_age_seconds":340,"quarantined":1,"exhausted":0},
+  {"observed_at":"2026-11-12T18:02:00-06:00","oldest_outbox_age_seconds":380,"quarantined":2,"exhausted":0}
+]
+```
+
+The default policy fires independently for oldest-outbox age and terminal-queue growth after three
+consecutive breached samples. Once firing, it requires two consecutive healthy samples to recover,
+so one transient improvement cannot flap the state. Thresholds and streak lengths are explicit CLI
+arguments. Input is limited to 1 MB and 1,000 strictly ordered samples; invalid timestamps, booleans
+masquerading as counts, negative values and malformed JSON fail closed. Output is deterministic JSON
+containing only fixed alert names, states, streaks and transitions. This is policy rehearsal—not a
+live monitor, readiness gate, durable alert state, paging integration or claim of production-safe
+thresholds.
+
 ### Deployment quality gates
 
 Python, PostgreSQL and Redis image references retain readable version tags but are also pinned to
