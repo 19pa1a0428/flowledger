@@ -131,6 +131,38 @@ containing only fixed alert names, states, streaks and transitions. This is poli
 live monitor, readiness gate, durable alert state, paging integration or claim of production-safe
 thresholds.
 
+### Opt-in local monitor
+
+The `operations` Compose profile runs the same application image as a read-only monitor. It samples
+the existing payload-free PostgreSQL/Redis snapshot, feeds exact terminal counts into the alert state
+machine and writes one compact JSON event per attempt to stdout. It has no host port and does not
+send email, chat, pages or webhooks:
+
+```bash
+docker compose --profile operations up monitor
+docker compose --profile operations logs --follow monitor
+```
+
+The monitor defaults to a 30-second interval, three consecutive sampling failures before a nonzero
+exit, and an unlimited run terminated by SIGINT/SIGTERM. For a bounded local demonstration:
+
+```bash
+docker compose --profile operations run --rm \
+  -e FLOWLEDGER_MONITOR_INTERVAL_SECONDS=1 \
+  -e FLOWLEDGER_MONITOR_MAX_SAMPLES=5 monitor
+```
+
+Policy settings use `FLOWLEDGER_ALERT_OUTBOX_AGE_SECONDS`,
+`FLOWLEDGER_ALERT_TERMINAL_GROWTH`, `FLOWLEDGER_ALERT_TRIGGER_SAMPLES` and
+`FLOWLEDGER_ALERT_RECOVERY_SAMPLES`. Monitor controls use
+`FLOWLEDGER_MONITOR_INTERVAL_SECONDS`, `FLOWLEDGER_MONITOR_COUNT_LIMIT`,
+`FLOWLEDGER_MONITOR_MAX_CONSECUTIVE_ERRORS` and `FLOWLEDGER_MONITOR_MAX_SAMPLES`.
+Configuration is bounded and fails closed. A transient sampling failure emits a fixed
+`sample_error` record without the exception message and does not advance or clear alert state.
+Capped quarantine/exhaustion counts are errors because their growth is not exact. The monitor exits
+after the configured consecutive-error budget so Compose can restart it; it remains independent of
+API readiness and business processing.
+
 ### Deployment quality gates
 
 Python, PostgreSQL and Redis image references retain readable version tags but are also pinned to

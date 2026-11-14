@@ -82,6 +82,16 @@ services:
       redis:
         condition: service_healthy
 
+  monitor:
+    <<: *app
+    profiles: ["operations"]
+    command: ["python", "-m", "flowledger.monitor"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   redis-data:

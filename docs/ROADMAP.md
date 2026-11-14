@@ -97,9 +97,14 @@ will produce a finished feature. Work progresses only when the preceding increme
     quarantine/exhaustion growth. Independent state machines require consecutive breaches and
     explicit recovery hysteresis; bounded, strictly ordered synthetic input produces structured JSON
     without reading services or sending notifications.
-31. NEXT: Add an opt-in local monitor in the existing application image that periodically feeds the
-    payload-free health snapshot into the proven policy state machine, emits structured stdout only,
-    handles graceful shutdown and sampling failures explicitly, and remains separate from readiness.
+31. DONE: Add an opt-in `operations` Compose profile that runs a local monitor from the existing
+    application image. It periodically feeds exact payload-free health snapshots into the proven
+    policy state machine, emits structured stdout only, preserves state across transient sampling
+    errors, exits after a bounded error streak, handles graceful shutdown and remains outside API
+    readiness and business processing.
+32. NEXT: Add a disposable Compose integration smoke and concise incident runbook that use only
+    synthetic backlog/terminal-queue state to prove monitor firing, recovery and fail-closed capped
+    count behavior without external notifications.
 
 ## Working cadence
 

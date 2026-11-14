@@ -1,5 +1,51 @@
 # Learning journal
 
+## 2026-11-13 — Opt-in local alert monitor
+
+Assistance: AI-assisted monitor boundary design, state-machine reuse, failure tests and documentation.
+
+Added `python -m flowledger.monitor` and an optional `operations` Compose profile. The monitor uses
+the existing application image and payload-free health snapshot; it does not add an API endpoint,
+public port or separately deployed codebase. Each successful poll becomes an ordered alert sample,
+and each result is emitted as compact structured JSON on stdout. The offline evaluator was refactored
+into a reusable stateful class without changing its batch contract.
+
+Transient PostgreSQL, Redis, schema or sampling failures emit a fixed error type without the
+exception message and do not advance or clear alert state. A configurable consecutive-error budget
+causes a nonzero exit so Compose can restart the process instead of leaving a silently stale monitor.
+SIGINT/SIGTERM use an interruptible wait and finish with a bounded summary event. Capped quarantine
+or exhausted counts fail sampling because their exact growth cannot be derived. All intervals,
+count limits, error budgets, optional sample bounds and alert thresholds are validated at startup.
+
+Validation: after installing the declared pinned test extras in the fresh runtime, the focused
+monitor/evaluator suite passed all 15 tests. Python 3.12 then ran 173 tests: 151 passed and 22 live
+Redis variants were skipped because no disposable local Redis URL was configured. Bytecode
+compilation, deployment-pin verification, PostgreSQL offline migration generation, all 12 frontend
+tests and the TypeScript/Vite production build passed. Docker is unavailable locally, so the real
+profile startup, Compose smoke/restore and container evidence remain GitHub Actions responsibilities;
+no local container result is claimed.
+
+Limits: alert state and stdout are process-local and not durable. Restarting establishes a new
+terminal-count baseline and clears firing state. The PostgreSQL and Redis reads are not one atomic
+cross-store snapshot, thresholds remain examples rather than service objectives, and a nonzero exit
+only enables local supervision—it does not notify an operator. The optional profile is not started by
+the default Compose stack and has no role in readiness or workflow correctness.
+
+Exercise: run the monitor for five one-second samples with `FLOWLEDGER_MONITOR_MAX_SAMPLES=5`, then
+stop Redis during a second run. Compare transient `sample_error` events with the final bounded-error
+exit and explain why the last good alert state should not be treated as recovered during the outage.
+
+Interview question: Why should a monitoring loop preserve alert state across a transient sampling
+failure but terminate after a bounded consecutive-error streak?
+
+Answer outline: missing evidence is neither healthy nor recovered, so advancing the state machine
+would create false clears. A short gap can be tolerated without losing incident context; a sustained
+gap means the monitor itself is unhealthy. Exiting makes supervision visible and restartable while
+avoiding an infinite loop that emits stale confidence.
+
+Next: prove the live profile with a disposable synthetic incident smoke and document the operator
+response boundary without adding external notification delivery.
+
 ## 2026-11-12 — Deterministic alert-policy rehearsal
 
 Assistance: AI-assisted policy-state design, bounded-input implementation, tests and documentation.

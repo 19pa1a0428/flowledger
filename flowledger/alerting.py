@@ -98,6 +98,37 @@ class _AlertTracker:
                              self.breach_streak, self.recovery_streak)
 
 
+class AlertPolicyEvaluator:
+    """Retain alert state across ordered samples and explicit observation gaps."""
+
+    def __init__(self, policy: AlertPolicy):
+        self.policy = policy
+        self._outbox = _AlertTracker()
+        self._terminal = _AlertTracker()
+        self._previous: AlertSample | None = None
+
+    def update(self, sample: AlertSample) -> SampleEvaluation:
+        if self._previous is not None and sample.observed_at <= self._previous.observed_at:
+            raise ValueError("observed_at values must be strictly increasing")
+        growth = 0 if self._previous is None else max(
+            0,
+            sample.quarantined + sample.exhausted -
+            self._previous.quarantined - self._previous.exhausted,
+        )
+        outbox_breached = (
+            sample.oldest_outbox_age_seconds is not None and
+            sample.oldest_outbox_age_seconds >= self.policy.outbox_age_seconds
+        )
+        alerts = (
+            self._outbox.update("oldest_outbox_age", outbox_breached, self.policy),
+            self._terminal.update("terminal_queue_growth",
+                                  growth >= self.policy.terminal_growth,
+                                  self.policy),
+        )
+        self._previous = sample
+        return SampleEvaluation(sample.observed_at.isoformat(), growth, alerts)
+
+
 def evaluate(samples: Sequence[AlertSample], policy: AlertPolicy) -> tuple[SampleEvaluation, ...]:
     """Evaluate ordered samples without reading services or sending notifications."""
     if not samples:
@@ -105,28 +136,8 @@ def evaluate(samples: Sequence[AlertSample], policy: AlertPolicy) -> tuple[Sampl
     if len(samples) > MAX_SAMPLES:
         raise ValueError(f"at most {MAX_SAMPLES} samples are allowed")
 
-    outbox = _AlertTracker()
-    terminal = _AlertTracker()
-    previous: AlertSample | None = None
-    results = []
-    for sample in samples:
-        if previous is not None and sample.observed_at <= previous.observed_at:
-            raise ValueError("observed_at values must be strictly increasing")
-        growth = 0 if previous is None else max(
-            0,
-            sample.quarantined + sample.exhausted -
-            previous.quarantined - previous.exhausted,
-        )
-        outbox_breached = (sample.oldest_outbox_age_seconds is not None and
-                           sample.oldest_outbox_age_seconds >= policy.outbox_age_seconds)
-        alerts = (
-            outbox.update("oldest_outbox_age", outbox_breached, policy),
-            terminal.update("terminal_queue_growth",
-                            growth >= policy.terminal_growth, policy),
-        )
-        results.append(SampleEvaluation(sample.observed_at.isoformat(), growth, alerts))
-        previous = sample
-    return tuple(results)
+    evaluator = AlertPolicyEvaluator(policy)
+    return tuple(evaluator.update(sample) for sample in samples)
 
 
 def _integer(data: dict[str, Any], name: str) -> int:
