@@ -23,7 +23,9 @@ Redis variants were skipped because no disposable local Redis URL was configured
 compilation, deployment-pin verification, PostgreSQL offline migration generation, all 12 frontend
 tests and the TypeScript/Vite production build passed. Docker is unavailable locally, so the real
 profile startup, Compose smoke/restore and container evidence remain GitHub Actions responsibilities;
-no local container result is claimed.
+no local container result is claimed. GitHub Actions run 43539896021 passed all seven jobs: Python
+3.11–3.13 with live Redis variants, frontend tests/build, PostgreSQL plan gates, the existing Compose
+API-to-worker/Collector/restore checks, and the container scan with SBOM evidence.
 
 Limits: alert state and stdout are process-local and not durable. Restarting establishes a new
 terminal-count baseline and clears firing state. The PostgreSQL and Redis reads are not one atomic
