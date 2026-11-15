@@ -102,9 +102,12 @@ will produce a finished feature. Work progresses only when the preceding increme
     policy state machine, emits structured stdout only, preserves state across transient sampling
     errors, exits after a bounded error streak, handles graceful shutdown and remains outside API
     readiness and business processing.
-32. NEXT: Add a disposable Compose integration smoke and concise incident runbook that use only
-    synthetic backlog/terminal-queue state to prove monitor firing, recovery and fail-closed capped
-    count behavior without external notifications.
+32. DONE: Add a disposable Compose integration smoke and concise incident runbook. The smoke
+    synchronizes on live structured monitor output, uses two fixed synthetic Redis markers to prove
+    terminal-growth firing and recovery, verifies capped counts fail closed, cleans its exact markers
+    and sends no external notifications.
+33. NEXT: Version the structured monitor event contract and publish a checked JSON Schema with
+    backward-compatibility tests so future local log consumers can reject breaking changes safely.
 
 ## Working cadence
 

@@ -84,6 +84,8 @@ jobs:
           docker compose --env-file .env.example -f compose.yaml -f compose.otel.yaml
           --profile telemetry up --build --detach --wait
       - run: python scripts/telemetry_smoke.py
+      - name: Prove optional monitor profile
+        run: python scripts/monitor_smoke.py
       - if: always()
         run: >-
           docker compose --env-file .env.example -f compose.yaml -f compose.otel.yaml

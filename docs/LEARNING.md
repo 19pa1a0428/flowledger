@@ -1,5 +1,52 @@
 # Learning journal
 
+## 2026-11-14 — Live monitor profile proof and response runbook
+
+Assistance: AI-assisted integration-smoke design, evidence assertions, cleanup tests and runbook
+documentation.
+
+Added `scripts/monitor_smoke.py` to prove the optional `operations` profile against the real Compose
+PostgreSQL and Redis services. The smoke reads monitor stdout as structured JSON and uses sample
+events as synchronization points instead of timing-only assertions. After establishing a baseline,
+it adds two fixed synthetic quarantine markers across consecutive samples and requires terminal
+growth `[0, 1, 1, 0, 0]`, a `fired` transition and then a `recovered` transition. A second phase sets
+the exact-count limit to one and requires `CappedTerminalCounts`, a bounded-error stop and exit status
+one. Both phases remove only their exact markers in `finally` and terminate a lingering child.
+
+Added a local alert response runbook covering signal interpretation, corroborating payload-free
+checks, safe outbox and terminal-queue triage, recovery evidence and explicit non-goals. It warns
+against deleting outbox rows, manipulating Redis keys to force green state, automatic replay, shared
+or retained-data smoke runs, and treating missing samples as recovery. CI now runs the live monitor
+proof after the existing Compose, restore and Collector checks.
+
+Validation: after installing the declared pinned test extras in the fresh runtime, the focused
+monitor/evaluator/smoke suite passed all 17 tests. Python 3.12 then ran 175 tests: 153 passed and 22
+live Redis variants were skipped because no disposable local Redis URL was configured. Bytecode
+compilation, deployment-pin verification, PostgreSQL offline migration generation, all 12 frontend
+tests and the TypeScript/Vite production build passed. Docker is unavailable locally, so no live
+profile result is claimed before CI.
+
+Limits: the smoke proves one disposable local path, not production alert delivery, durable state,
+sampling accuracy under load or an on-call response. It modifies a Redis list with synthetic markers;
+normal cleanup is exact, but a force-killed host process can bypass `finally`. CI destroys disposable
+volumes afterward. PostgreSQL-oldest-age firing is covered by deterministic policy/monitor tests but
+is not mutated by this integration smoke to avoid direct database fixture writes.
+
+Exercise: run the smoke in a disposable stack, then inspect the five emitted sample events. Match
+the two marker additions to terminal growth and explain why recovery needs two unchanged samples
+rather than marker deletion.
+
+Interview question: Why synchronize an integration smoke on structured process output instead of
+sleeping fixed durations before asserting logs?
+
+Answer outline: fixed sleeps encode machine-speed assumptions and can race startup or sampling.
+Reading a defined event establishes which state the process actually observed before the test mutates
+the next input. Timeouts still bound the test, but correctness depends on protocol progress rather
+than elapsed wall-clock guesses.
+
+Next: version the monitor event contract and add a checked JSON Schema with compatibility tests for
+future local log consumers.
+
 ## 2026-11-13 — Opt-in local alert monitor
 
 Assistance: AI-assisted monitor boundary design, state-machine reuse, failure tests and documentation.

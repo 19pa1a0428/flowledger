@@ -163,6 +163,10 @@ Capped quarantine/exhaustion counts are errors because their growth is not exact
 after the configured consecutive-error budget so Compose can restart it; it remains independent of
 API readiness and business processing.
 
+See [the local alert response runbook](docs/ALERTS.md) for signal interpretation, safe triage and the
+disposable `python scripts/monitor_smoke.py` integration proof. The smoke uses only two fixed
+synthetic Redis markers and must not be run against retained or shared data.
+
 ### Deployment quality gates
 
 Python, PostgreSQL and Redis image references retain readable version tags but are also pinned to
