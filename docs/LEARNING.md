@@ -24,7 +24,10 @@ monitor/evaluator/smoke suite passed all 17 tests. Python 3.12 then ran 175 test
 live Redis variants were skipped because no disposable local Redis URL was configured. Bytecode
 compilation, deployment-pin verification, PostgreSQL offline migration generation, all 12 frontend
 tests and the TypeScript/Vite production build passed. Docker is unavailable locally, so no live
-profile result is claimed before CI.
+profile result is claimed from the local runtime. GitHub Actions run 43661976903 passed all seven
+jobs: Python 3.11–3.13 with live Redis variants, frontend tests/build, PostgreSQL plan gates, the
+Compose API-to-worker/restore/Collector checks plus the new live monitor firing, recovery and capped
+count proof, and the container scan with SBOM evidence.
 
 Limits: the smoke proves one disposable local path, not production alert delivery, durable state,
 sampling accuracy under load or an on-call response. It modifies a Redis list with synthetic markers;
