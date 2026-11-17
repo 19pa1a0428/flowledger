@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/19pa1a0428/flowledger/schemas/monitor-event-v1.schema.json",
+  "title": "FlowLedger monitor event version 1",
+  "description": "Payload-free stdout contract for the optional local monitor.",
+  "oneOf": [
+    { "$ref": "#/$defs/sample" },
+    { "$ref": "#/$defs/sample_error" },
+    { "$ref": "#/$defs/stopped" }
+  ],
+  "$defs": {
+    "alert_state": {
+      "type": "object",
+      "properties": {
+        "status": { "enum": ["clear", "firing"] },
+        "transition": { "enum": ["none", "fired", "recovered"] },
+        "breach_streak": { "type": "integer", "minimum": 0 },
+        "recovery_streak": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["status", "transition", "breach_streak", "recovery_streak"]
+    },
+    "oldest_outbox_alert": {
+      "allOf": [
+        { "$ref": "#/$defs/alert_state" },
+        {
+          "type": "object",
+          "properties": { "name": { "const": "oldest_outbox_age" } },
+          "required": ["name"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "terminal_queue_alert": {
+      "allOf": [
+        { "$ref": "#/$defs/alert_state" },
+        {
+          "type": "object",
+          "properties": { "name": { "const": "terminal_queue_growth" } },
+          "required": ["name"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "sample": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": 1 },
+        "event": { "const": "sample" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "outbox_pending": { "type": "integer", "minimum": 0 },
+        "terminal_growth": { "type": "integer", "minimum": 0 },
+        "alerts": {
+          "type": "array",
+          "prefixItems": [
+            { "$ref": "#/$defs/oldest_outbox_alert" },
+            { "$ref": "#/$defs/terminal_queue_alert" }
+          ],
+          "items": false,
+          "minItems": 2
+        }
+      },
+      "required": [
+        "schema_version", "event", "observed_at", "outbox_pending",
+        "terminal_growth", "alerts"
+      ],
+      "additionalProperties": false
+    },
+    "sample_error": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": 1 },
+        "event": { "const": "sample_error" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "consecutive_errors": { "type": "integer", "minimum": 1 },
+        "error_type": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        }
+      },
+      "required": [
+        "schema_version", "event", "observed_at", "consecutive_errors", "error_type"
+      ],
+      "additionalProperties": false
+    },
+    "stopped": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": 1 },
+        "event": { "const": "stopped" },
+        "attempts": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 },
+        "samples": { "type": "integer", "minimum": 0 },
+        "reason": {
+          "enum": ["signal", "max_samples", "consecutive_sample_errors"]
+        }
+      },
+      "required": [
+        "schema_version", "event", "attempts", "errors", "samples", "reason"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

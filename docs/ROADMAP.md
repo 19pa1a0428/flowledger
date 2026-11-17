@@ -106,8 +106,12 @@ will produce a finished feature. Work progresses only when the preceding increme
     synchronizes on live structured monitor output, uses two fixed synthetic Redis markers to prove
     terminal-growth firing and recovery, verifies capped counts fail closed, cleans its exact markers
     and sends no external notifications.
-33. NEXT: Version the structured monitor event contract and publish a checked JSON Schema with
-    backward-compatibility tests so future local log consumers can reject breaking changes safely.
+33. DONE: Version every structured monitor event, publish a strict Draft 2020-12 JSON Schema and
+    retain representative version-1 compatibility examples. Tests check the schema itself, validate
+    every emitted event kind and reject missing, unknown or payload-expanding contract changes.
+34. NEXT: Add a bounded offline JSONL inspector that selects supported monitor schemas, rejects
+    malformed or unknown-version records and summarizes payload-free incident transitions without
+    connecting to services or sending notifications.
 
 ## Working cadence
 

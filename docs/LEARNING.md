@@ -1,5 +1,46 @@
 # Learning journal
 
+## 2026-11-16 — Versioned monitor event contract
+
+Assistance: AI-assisted contract design, JSON Schema, compatibility tests and documentation.
+
+Added `schema_version: 1` to every `sample`, `sample_error` and `stopped` monitor record. Published a
+strict Draft 2020-12 schema that discriminates the three event kinds, fixes the payload-free fields,
+alert names and alert order, checks timestamps and counters, and rejects unknown properties. The
+runtime monitor does not import the test-only schema validator or change its service-read behavior.
+
+Retained representative version-1 events covering clear, firing, recovery, sampling error and every
+stop reason. Tests validate those examples against the published schema, validate all event kinds
+from the current emitter, and prove that missing versions, unknown versions and added payload
+identifiers are rejected. Existing consumers can keep version 1 pinned; an incompatible future
+shape must use a new schema rather than silently changing the discriminator.
+
+Validation: after installing the declared pinned test extras in the fresh runtime, all 12 focused
+monitor contract/profile tests passed. Python 3.12 then ran 178 tests: 156 passed and 22 live Redis
+variants were skipped because no disposable local Redis URL was configured. JSON Schema checking,
+bytecode compilation, deployment-pin verification, PostgreSQL offline migration generation, all 12
+frontend tests and the TypeScript/Vite production build passed. Docker is unavailable locally, so
+the versioned live monitor profile remains GitHub Actions evidence rather than a local claim.
+
+Limits: JSON Schema validates record shape, not event ordering, cross-record counter arithmetic,
+delivery, log retention or monitor availability. The examples preserve compatibility evidence but
+are not production telemetry. Consumers still need bounded input and must reject unsupported
+versions before dispatch; that offline inspection path is the next increment.
+
+Exercise: open `schemas/monitor-event-v1.schema.json`, add a synthetic `workflow_id` to one retained
+event and run `python -m unittest tests.test_monitor_contract -v`. Explain why strict rejection helps
+keep operational logs payload-free and why a legitimate incompatible shape needs version 2.
+
+Interview question: Why put an explicit version inside every event when the JSON fields already reveal
+the apparent shape?
+
+Answer outline: inferring a version from fields is ambiguous when fields are optional, renamed or
+reinterpreted. An explicit discriminator lets consumers select a known schema before parsing and
+reject unknown contracts safely. Compatibility examples prevent accidental breakage within a version;
+intentional breaking changes get a new version and a deliberate migration path.
+
+Next: build a bounded offline JSONL inspector over the published monitor schemas.
+
 ## 2026-11-14 — Live monitor profile proof and response runbook
 
 Assistance: AI-assisted integration-smoke design, evidence assertions, cleanup tests and runbook

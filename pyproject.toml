@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["httpx==0.28.1", "fakeredis[lua]==2.31.1"]
+test = ["httpx==0.28.1", "fakeredis[lua]==2.31.1", "jsonschema==4.26.0"]
 
 [tool.setuptools.packages.find]
 include = ["flowledger*"]

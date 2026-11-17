@@ -1,0 +1,45 @@
+[
+  {
+    "schema_version": 1,
+    "event": "sample",
+    "observed_at": "2026-11-16T19:00:00-06:00",
+    "outbox_pending": 0,
+    "terminal_growth": 0,
+    "alerts": [
+      {"name": "oldest_outbox_age", "status": "clear", "transition": "none", "breach_streak": 0, "recovery_streak": 0},
+      {"name": "terminal_queue_growth", "status": "clear", "transition": "none", "breach_streak": 0, "recovery_streak": 0}
+    ]
+  },
+  {
+    "schema_version": 1,
+    "event": "sample",
+    "observed_at": "2026-11-16T19:01:00-06:00",
+    "outbox_pending": 3,
+    "terminal_growth": 2,
+    "alerts": [
+      {"name": "oldest_outbox_age", "status": "firing", "transition": "fired", "breach_streak": 0, "recovery_streak": 0},
+      {"name": "terminal_queue_growth", "status": "firing", "transition": "fired", "breach_streak": 0, "recovery_streak": 0}
+    ]
+  },
+  {
+    "schema_version": 1,
+    "event": "sample",
+    "observed_at": "2026-11-16T19:02:00-06:00",
+    "outbox_pending": 0,
+    "terminal_growth": 0,
+    "alerts": [
+      {"name": "oldest_outbox_age", "status": "clear", "transition": "recovered", "breach_streak": 0, "recovery_streak": 0},
+      {"name": "terminal_queue_growth", "status": "clear", "transition": "recovered", "breach_streak": 0, "recovery_streak": 0}
+    ]
+  },
+  {
+    "schema_version": 1,
+    "event": "sample_error",
+    "observed_at": "2026-11-16T19:03:00-06:00",
+    "consecutive_errors": 1,
+    "error_type": "CappedTerminalCounts"
+  },
+  {"schema_version": 1, "event": "stopped", "attempts": 0, "errors": 0, "samples": 0, "reason": "signal"},
+  {"schema_version": 1, "event": "stopped", "attempts": 5, "errors": 0, "samples": 5, "reason": "max_samples"},
+  {"schema_version": 1, "event": "stopped", "attempts": 3, "errors": 3, "samples": 0, "reason": "consecutive_sample_errors"}
+]

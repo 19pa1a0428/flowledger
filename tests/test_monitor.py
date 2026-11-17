@@ -54,7 +54,7 @@ class MonitorTests(TestCase):
         self.assertEqual(events[4]["alerts"][0]["transition"], "recovered")
         self.assertEqual(events[-1], {
             "attempts": 5, "errors": 0, "event": "stopped",
-            "reason": "max_samples", "samples": 5,
+            "reason": "max_samples", "samples": 5, "schema_version": 1,
         })
 
     def test_transient_sampling_error_does_not_advance_or_clear_alert_state(self):
@@ -112,7 +112,7 @@ class MonitorTests(TestCase):
         snapshots.assert_not_called()
         self.assertEqual(events, [{
             "attempts": 0, "errors": 0, "event": "stopped",
-            "reason": "signal", "samples": 0,
+            "reason": "signal", "samples": 0, "schema_version": 1,
         }])
 
     def test_environment_configuration_is_bounded_and_fail_closed(self):

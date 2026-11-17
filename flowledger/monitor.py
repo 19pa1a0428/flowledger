@@ -17,6 +17,9 @@ from flowledger.operations import OperationalHealth, health_snapshot
 from flowledger.repository import build_session_factory
 
 
+MONITOR_EVENT_SCHEMA_VERSION = 1
+
+
 class CappedTerminalCounts(ValueError):
     """Terminal queue growth cannot be derived from capped counts."""
 
@@ -110,6 +113,7 @@ def run_monitor(snapshot_fn: Callable[[datetime], OperationalHealth],
             emit({
                 "event": "sample",
                 "outbox_pending": snapshot.outbox.pending,
+                "schema_version": MONITOR_EVENT_SCHEMA_VERSION,
                 **asdict(evaluation),
             })
         except Exception as error:  # Data-source/schema failures are operational evidence.
@@ -120,11 +124,13 @@ def run_monitor(snapshot_fn: Callable[[datetime], OperationalHealth],
                 "error_type": type(error).__name__,
                 "event": "sample_error",
                 "observed_at": observed_at.isoformat(),
+                "schema_version": MONITOR_EVENT_SCHEMA_VERSION,
             })
             if consecutive_errors >= config.max_consecutive_errors:
                 reason = "consecutive_sample_errors"
                 emit({"attempts": attempts, "errors": errors, "event": "stopped",
-                      "reason": reason, "samples": successes})
+                      "reason": reason, "samples": successes,
+                      "schema_version": MONITOR_EVENT_SCHEMA_VERSION})
                 return 1
 
         if config.max_samples and attempts >= config.max_samples:
@@ -135,7 +141,8 @@ def run_monitor(snapshot_fn: Callable[[datetime], OperationalHealth],
             break
 
     emit({"attempts": attempts, "errors": errors, "event": "stopped",
-          "reason": reason, "samples": successes})
+          "reason": reason, "samples": successes,
+          "schema_version": MONITOR_EVENT_SCHEMA_VERSION})
     return 0
 
 

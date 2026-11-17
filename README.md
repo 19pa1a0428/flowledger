@@ -167,6 +167,14 @@ See [the local alert response runbook](docs/ALERTS.md) for signal interpretation
 disposable `python scripts/monitor_smoke.py` integration proof. The smoke uses only two fixed
 synthetic Redis markers and must not be run against retained or shared data.
 
+Every monitor record includes `schema_version: 1` and must match
+[`schemas/monitor-event-v1.schema.json`](schemas/monitor-event-v1.schema.json). The schema is strict:
+it distinguishes `sample`, `sample_error` and `stopped`, fixes the two alert names and order, and
+rejects unknown fields or versions. Local log consumers should select a schema by the integer version
+before interpreting the event and fail closed when that version is unsupported. Version-1 compatibility
+examples are retained in `tests/fixtures/monitor-events-v1.json`; changing an existing contract requires
+a new schema version rather than silently rewriting version 1.
+
 ### Deployment quality gates
 
 Python, PostgreSQL and Redis image references retain readable version tags but are also pinned to

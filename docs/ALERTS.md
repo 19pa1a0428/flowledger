@@ -14,6 +14,9 @@ docker compose exec api python -m flowledger.operations
 
 The health snapshot is the first corroborating check. Do not infer recovery from a missing monitor
 sample. PostgreSQL and Redis are sampled sequentially rather than in one cross-store transaction.
+Each record must contain `schema_version: 1` and validate against
+`schemas/monitor-event-v1.schema.json`. Treat an absent or unsupported version as unreadable evidence;
+do not guess its shape or reinterpret it as a healthy sample.
 
 | Event | Meaning | First check |
 | --- | --- | --- |
