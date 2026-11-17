@@ -20,7 +20,10 @@ monitor contract/profile tests passed. Python 3.12 then ran 178 tests: 156 passe
 variants were skipped because no disposable local Redis URL was configured. JSON Schema checking,
 bytecode compilation, deployment-pin verification, PostgreSQL offline migration generation, all 12
 frontend tests and the TypeScript/Vite production build passed. Docker is unavailable locally, so
-the versioned live monitor profile remains GitHub Actions evidence rather than a local claim.
+the versioned live monitor profile remains GitHub Actions evidence rather than a local claim. GitHub
+Actions run 43999604909 passed all seven jobs: Python 3.11–3.13 with live Redis variants, frontend
+tests/build, PostgreSQL plan gates, the Compose API-to-worker/restore/Collector checks plus the live
+versioned monitor proof, and the container scan with SBOM evidence.
 
 Limits: JSON Schema validates record shape, not event ordering, cross-record counter arithmetic,
 delivery, log retention or monitor availability. The examples preserve compatibility evidence but
