@@ -24,7 +24,9 @@ variants were skipped because no disposable local Redis URL was configured. Byte
 deployment-pin verification, PostgreSQL offline migration generation, all 12 frontend tests and the
 TypeScript/Vite production build passed. A non-editable wheel built successfully and contained the
 packaged version-1 schema. Docker is unavailable locally, so container behavior remains GitHub
-Actions evidence rather than a local claim.
+Actions evidence rather than a local claim. GitHub Actions run 44218211677 passed all seven jobs:
+Python 3.11–3.13 with live Redis variants, frontend tests/build, PostgreSQL plan gates, the Compose
+API-to-worker/restore/Collector/versioned-monitor checks, and the container scan with SBOM evidence.
 
 Limits: the inspector validates each record independently and summarizes file order. It does not yet
 prove strictly increasing timestamps, legal cross-record state transitions, counter agreement or run
