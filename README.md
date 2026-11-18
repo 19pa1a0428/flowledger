@@ -175,6 +175,20 @@ before interpreting the event and fail closed when that version is unsupported. 
 examples are retained in `tests/fixtures/monitor-events-v1.json`; changing an existing contract requires
 a new schema version rather than silently rewriting version 1.
 
+To validate retained local output without connecting to PostgreSQL or Redis, export raw JSONL without
+Compose prefixes and run the offline inspector:
+
+```bash
+docker compose --profile operations logs --no-color --no-log-prefix monitor > monitor.jsonl
+python -m flowledger.monitor_log monitor.jsonl
+```
+
+The inspector reads at most 1 MB and 10,000 nonblank records. It selects a supported schema from each
+integer `schema_version` before validation and rejects malformed, unsupported or extra-field records
+without echoing their contents. Its deterministic summary contains only fixed event counts, fired and
+recovered transition counts, latest alert statuses, stop reasons and the first/last observation times.
+It does not read services, display error details or identifiers, mutate state, or send notifications.
+
 ### Deployment quality gates
 
 Python, PostgreSQL and Redis image references retain readable version tags but are also pinned to

@@ -10,6 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
   "alembic==1.17.0",
   "fastapi==0.143.0",
+  "jsonschema==4.26.0",
   "opentelemetry-api==1.44.0",
   "opentelemetry-exporter-otlp-proto-http==1.44.0",
   "opentelemetry-sdk==1.44.0",
@@ -21,8 +22,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["httpx==0.28.1", "fakeredis[lua]==2.31.1", "jsonschema==4.26.0"]
+test = ["httpx==0.28.1", "fakeredis[lua]==2.31.1"]
 
 [tool.setuptools.packages.find]
 include = ["flowledger*"]
+
+[tool.setuptools.package-data]
+"flowledger.schemas" = ["*.json"]
 

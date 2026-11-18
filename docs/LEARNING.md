@@ -1,5 +1,50 @@
 # Learning journal
 
+## 2026-11-17 — Bounded offline monitor-log inspector
+
+Assistance: AI-assisted parser design, schema dispatch, privacy-safe failure handling, tests and
+documentation.
+
+Added `python -m flowledger.monitor_log` for raw monitor JSONL. It rejects files over 1 MB, more than
+10,000 records, blank lines, invalid UTF-8/JSON, non-object records, missing or non-integer versions,
+unsupported versions and records that fail their selected schema. Rejection messages identify only
+the record number and failure category; they never echo the rejected record. The command reads no
+database or Redis state and sends no notifications.
+
+Valid input produces deterministic fixed-shape counts for event kinds, fired/recovered transitions,
+latest alert statuses and stop reasons, plus schema versions and the first/last observation times.
+It intentionally omits outbox counts, error types and identifiers. The published version-1 schema has
+a byte-identical packaged resource checked by tests, so the inspector also works from an installed
+wheel rather than depending on repository-relative files. `jsonschema` moved from test-only to the
+runtime dependencies because schema validation is now an application command.
+
+Validation: after installing the declared pinned extras in the fresh runtime, all 15 focused
+inspector/schema/monitor tests passed. Python 3.12 then ran 183 tests: 161 passed and 22 live Redis
+variants were skipped because no disposable local Redis URL was configured. Bytecode compilation,
+deployment-pin verification, PostgreSQL offline migration generation, all 12 frontend tests and the
+TypeScript/Vite production build passed. A non-editable wheel built successfully and contained the
+packaged version-1 schema. Docker is unavailable locally, so container behavior remains GitHub
+Actions evidence rather than a local claim.
+
+Limits: the inspector validates each record independently and summarizes file order. It does not yet
+prove strictly increasing timestamps, legal cross-record state transitions, counter agreement or run
+boundaries. A syntactically valid but truncated file can therefore produce a partial summary. It is a
+local diagnostic, not durable log storage, production monitoring or incident delivery.
+
+Exercise: export monitor logs with Compose prefixes disabled, run the inspector, then change one
+record's `schema_version` to `2`. Confirm the command returns status 2 without printing the record and
+explain why skipping that line would make the incident summary untrustworthy.
+
+Interview question: Why should a log inspector select the schema version before validating or
+summarizing the rest of a record?
+
+Answer outline: field meanings can change between versions, so parsing first can silently apply the
+wrong semantics. Dispatching on a small explicit discriminator lets the consumer fail closed on an
+unknown contract. Bounds prevent resource abuse, and privacy-safe errors avoid leaking the very
+payload that strict schemas are meant to exclude.
+
+Next: validate sequence semantics and explicit boundaries for concatenated monitor runs.
+
 ## 2026-11-16 — Versioned monitor event contract
 
 Assistance: AI-assisted contract design, JSON Schema, compatibility tests and documentation.

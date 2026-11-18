@@ -109,9 +109,13 @@ will produce a finished feature. Work progresses only when the preceding increme
 33. DONE: Version every structured monitor event, publish a strict Draft 2020-12 JSON Schema and
     retain representative version-1 compatibility examples. Tests check the schema itself, validate
     every emitted event kind and reject missing, unknown or payload-expanding contract changes.
-34. NEXT: Add a bounded offline JSONL inspector that selects supported monitor schemas, rejects
-    malformed or unknown-version records and summarizes payload-free incident transitions without
-    connecting to services or sending notifications.
+34. DONE: Add a bounded offline JSONL inspector that selects packaged supported schemas before
+    validation, rejects malformed, unknown-version and extra-field records without echoing input,
+    and summarizes fixed event, transition, status and stop counters without connecting to services
+    or sending notifications.
+35. NEXT: Add sequence-level monitor-log checks for strictly increasing observations, legal alert
+    status/transition combinations and stopped counters that agree with preceding records, while
+    preserving support for concatenated runs through explicit run boundaries.
 
 ## Working cadence
 

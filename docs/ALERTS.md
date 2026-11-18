@@ -18,6 +18,12 @@ Each record must contain `schema_version: 1` and validate against
 `schemas/monitor-event-v1.schema.json`. Treat an absent or unsupported version as unreadable evidence;
 do not guess its shape or reinterpret it as a healthy sample.
 
+For bounded offline review, export raw JSONL with `docker compose --profile operations logs --no-color
+--no-log-prefix monitor > monitor.jsonl`, then run `python -m flowledger.monitor_log monitor.jsonl`.
+The summary counts transitions and stop reasons without printing error types or service identifiers.
+Any rejected record makes the command return status 2; investigate the source rather than dropping the
+record and treating the remaining file as complete evidence.
+
 | Event | Meaning | First check |
 | --- | --- | --- |
 | `sample` with `transition: fired` | A configured signal breached for its full activation streak | Confirm the latest payload-free snapshot and process logs |
