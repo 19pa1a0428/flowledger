@@ -22,7 +22,9 @@ variants were skipped because no disposable local Redis URL was configured. Byte
 deployment-pin verification, PostgreSQL offline migration generation, all 12 frontend tests and the
 TypeScript/Vite production build passed. A non-editable wheel built successfully and retained the
 packaged version-1 event schema. Docker is unavailable locally, so live Compose behavior remains a
-GitHub Actions check rather than a local claim. GitHub Actions validation is pending publication.
+GitHub Actions check rather than a local claim. GitHub Actions run 44437492515 passed all seven jobs:
+Python 3.11–3.13 with live Redis variants, frontend tests/build, PostgreSQL plan gates, the Compose
+API-to-worker/restore/Collector/versioned-monitor checks, and the container scan with SBOM evidence.
 
 Limits: the event contract does not include the monitor's configured thresholds or sample limit, so
 the inspector cannot prove that a syntactically plausible stop happened at the configured threshold.
