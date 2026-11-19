@@ -113,9 +113,12 @@ will produce a finished feature. Work progresses only when the preceding increme
     validation, rejects malformed, unknown-version and extra-field records without echoing input,
     and summarizes fixed event, transition, status and stop counters without connecting to services
     or sending notifications.
-35. NEXT: Add sequence-level monitor-log checks for strictly increasing observations, legal alert
-    status/transition combinations and stopped counters that agree with preceding records, while
-    preserving support for concatenated runs through explicit run boundaries.
+35. DONE: Add sequence-level monitor-log checks for strictly increasing observations, legal alert
+    status/transition and streak combinations, stopped counters that agree with preceding records,
+    explicit boundaries for concatenated runs and rejection of unfinished final runs.
+36. NEXT: Version and publish a strict schema for the inspector's payload-free summary, with retained
+    compatibility examples and contract tests, so local automation can consume the output without
+    inferring its shape from implementation details.
 
 ## Working cadence
 

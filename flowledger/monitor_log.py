@@ -1,6 +1,7 @@
 """Bounded offline inspection for versioned monitor JSONL."""
 from argparse import ArgumentParser
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 import json
@@ -79,6 +80,73 @@ def _parse_record(line: str, number: int,
     return record
 
 
+def _validate_alert_sequence(record: dict[str, Any], number: int,
+                             statuses: dict[str, str]) -> None:
+    for alert in record["alerts"]:
+        name = alert["name"]
+        previous = statuses[name]
+        status = alert["status"]
+        transition = alert["transition"]
+        valid = (
+            (transition == "none" and status == previous)
+            or (transition == "fired" and previous == "clear" and status == "firing")
+            or (transition == "recovered" and previous == "firing" and status == "clear")
+        )
+        if not valid:
+            raise MonitorLogError(f"record {number} has an invalid alert transition")
+        if ((status == "clear" and alert["recovery_streak"] != 0)
+                or (status == "firing" and alert["breach_streak"] != 0)):
+            raise MonitorLogError(f"record {number} has inconsistent alert streaks")
+        statuses[name] = status
+
+
+def _validate_sequence(records: list[dict[str, Any]]) -> int:
+    attempts = errors = samples = runs = 0
+    previous_observed_at: datetime | None = None
+    previous_event: str | None = None
+    statuses = {name: "clear" for name in ALERT_NAMES}
+
+    for number, record in enumerate(records, start=1):
+        event = record["event"]
+        if event in ("sample", "sample_error"):
+            observed_at = datetime.fromisoformat(
+                record["observed_at"].replace("Z", "+00:00")
+            )
+            if previous_observed_at is not None and observed_at <= previous_observed_at:
+                raise MonitorLogError(
+                    f"record {number} has a non-increasing observation time"
+                )
+            previous_observed_at = observed_at
+            attempts += 1
+            if event == "sample":
+                samples += 1
+                _validate_alert_sequence(record, number, statuses)
+            else:
+                errors += 1
+            previous_event = event
+            continue
+
+        if (record["attempts"], record["errors"], record["samples"]) != (
+                attempts, errors, samples):
+            raise MonitorLogError(
+                f"record {number} stopped counters do not match the current run"
+            )
+        reason = record["reason"]
+        if reason == "max_samples" and attempts == 0:
+            raise MonitorLogError(f"record {number} has an invalid stop reason")
+        if reason == "consecutive_sample_errors" and previous_event != "sample_error":
+            raise MonitorLogError(f"record {number} has an invalid stop reason")
+        runs += 1
+        attempts = errors = samples = 0
+        previous_observed_at = None
+        previous_event = None
+        statuses = {name: "clear" for name in ALERT_NAMES}
+
+    if attempts or errors or samples or previous_event is not None:
+        raise MonitorLogError("input ended before the current run emitted stopped")
+    return runs
+
+
 def inspect_log(
     path: Path,
     validators: Mapping[int, Draft202012Validator] | None = None,
@@ -89,6 +157,7 @@ def inspect_log(
         _parse_record(line, number, validators)
         for number, line in enumerate(_read_lines(path), start=1)
     ]
+    runs = _validate_sequence(records)
     event_counts = {name: 0 for name in EVENT_NAMES}
     stop_reasons = {name: 0 for name in STOP_REASONS}
     transitions = {
@@ -122,6 +191,7 @@ def inspect_log(
             "last": observed_at[-1] if observed_at else None,
         },
         "records": len(records),
+        "runs": runs,
         "schema_versions": sorted(versions),
         "stop_reasons": stop_reasons,
         "transitions": transitions,

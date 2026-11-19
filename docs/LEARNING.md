@@ -1,5 +1,49 @@
 # Learning journal
 
+## 2026-11-18 — Sequence-checked monitor logs
+
+Assistance: AI-assisted sequence-invariant design, implementation, tests and documentation.
+
+The offline inspector now treats every `stopped` record as an explicit run boundary. Within each run,
+it requires observation times to increase strictly, starts both alert state machines clear, permits
+only no-change, clear-to-firing and firing-to-clear status/transition pairs, and checks status-specific
+streak resets. It independently counts attempts, sampling errors and successful samples, then requires
+the stop record to report those exact totals. A consecutive-error stop must follow a sampling error,
+an empty run cannot claim a max-samples stop, and a file ending mid-run is rejected.
+
+Concatenated complete runs remain supported: timestamps and alert state may restart only after the
+preceding `stopped` record. The deterministic summary now includes the number of complete runs. Tests
+cover a three-run file, a clock reset at a boundary, non-increasing observations, impossible alert
+transitions and streaks, mismatched counters, inconsistent stop reasons and truncated input.
+
+Validation: after installing the declared pinned extras in the fresh runtime, all 18 focused
+inspector/schema/monitor tests passed. Python 3.12 then ran 186 tests: 164 passed and 22 live Redis
+variants were skipped because no disposable local Redis URL was configured. Bytecode compilation,
+deployment-pin verification, PostgreSQL offline migration generation, all 12 frontend tests and the
+TypeScript/Vite production build passed. A non-editable wheel built successfully and retained the
+packaged version-1 event schema. Docker is unavailable locally, so live Compose behavior remains a
+GitHub Actions check rather than a local claim. GitHub Actions validation is pending publication.
+
+Limits: the event contract does not include the monitor's configured thresholds or sample limit, so
+the inspector cannot prove that a syntactically plausible stop happened at the configured threshold.
+It can detect inconsistent retained records, not prove that a producer did not omit records while
+also adjusting its counters. This remains a bounded local diagnostic, not durable storage, external
+notification delivery or an authenticity mechanism.
+
+Exercise: copy the retained events into one JSONL run followed by a matching `stopped` record, then
+duplicate that complete run with earlier timestamps. Confirm the concatenated file passes; remove the
+first `stopped` boundary and explain why the same timestamps must now be rejected.
+
+Interview question: Why should a sequence validator reset timestamp and alert state only at an
+explicit terminal record instead of whenever a timestamp moves backward?
+
+Answer outline: an explicit boundary makes restart semantics unambiguous and independently
+checkable. Treating a backward clock as an implicit restart would hide reordering or corruption,
+permit illegal state transitions to be reinterpreted, and allow a truncated run to look complete.
+The terminal counters also reconcile the exact records in each run before state is reset.
+
+Next: publish and test a versioned contract for the inspector's payload-free summary.
+
 ## 2026-11-17 — Bounded offline monitor-log inspector
 
 Assistance: AI-assisted parser design, schema dispatch, privacy-safe failure handling, tests and

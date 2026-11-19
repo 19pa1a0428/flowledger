@@ -185,9 +185,13 @@ python -m flowledger.monitor_log monitor.jsonl
 
 The inspector reads at most 1 MB and 10,000 nonblank records. It selects a supported schema from each
 integer `schema_version` before validation and rejects malformed, unsupported or extra-field records
-without echoing their contents. Its deterministic summary contains only fixed event counts, fired and
-recovered transition counts, latest alert statuses, stop reasons and the first/last observation times.
-It does not read services, display error details or identifiers, mutate state, or send notifications.
+without echoing their contents. It also requires observation times to increase strictly within each
+run, checks alert status/transition and streak combinations, and reconciles every `stopped` counter
+with the preceding records. A `stopped` record is the explicit run boundary: a concatenated file may
+restart timestamps and alert state only after one, and an unfinished final run is rejected. Its
+deterministic summary contains only run and fixed event counts, fired and recovered transition counts,
+latest observed alert statuses, stop reasons and the first/last observation times. It does not read
+services, display error details or identifiers, mutate state, or send notifications.
 
 ### Deployment quality gates
 

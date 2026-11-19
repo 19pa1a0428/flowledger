@@ -22,7 +22,11 @@ For bounded offline review, export raw JSONL with `docker compose --profile oper
 --no-log-prefix monitor > monitor.jsonl`, then run `python -m flowledger.monitor_log monitor.jsonl`.
 The summary counts transitions and stop reasons without printing error types or service identifiers.
 Any rejected record makes the command return status 2; investigate the source rather than dropping the
-record and treating the remaining file as complete evidence.
+record and treating the remaining file as complete evidence. The inspector treats each `stopped`
+record as an explicit run boundary. Within a run it requires strictly increasing observations, legal
+alert transitions and counters that agree with the preceding events; it rejects a file that ends with
+an unfinished run. Concatenated runs may restart their observation clock and alert state only after a
+`stopped` record.
 
 | Event | Meaning | First check |
 | --- | --- | --- |
