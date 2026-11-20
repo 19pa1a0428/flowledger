@@ -26,7 +26,9 @@ record and treating the remaining file as complete evidence. The inspector treat
 record as an explicit run boundary. Within a run it requires strictly increasing observations, legal
 alert transitions and counters that agree with the preceding events; it rejects a file that ends with
 an unfinished run. Concatenated runs may restart their observation clock and alert state only after a
-`stopped` record.
+`stopped` record. Automation that reads the successful output must dispatch on `summary_version` and
+validate it against `schemas/monitor-summary-v1.schema.json`; do not infer a contract from whichever
+fields happen to be present.
 
 | Event | Meaning | First check |
 | --- | --- | --- |

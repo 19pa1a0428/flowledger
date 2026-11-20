@@ -63,6 +63,7 @@ class MonitorLogTests(TestCase):
         summary = inspect_log(self.path)
 
         self.assertEqual(summary, {
+            "summary_version": 1,
             "event_counts": {"sample": 3, "sample_error": 2, "stopped": 3},
             "latest_status": {
                 "oldest_outbox_age": "clear",
@@ -133,13 +134,13 @@ class MonitorLogTests(TestCase):
         self.assertIn("record 1", stderr.getvalue())
         self.assertNotIn("do-not-echo", stderr.getvalue())
 
-    def test_schema_registry_and_packaged_copy_include_version_one(self):
+    def test_schema_registry_and_packaged_copies_include_version_one(self):
         self.assertEqual(set(load_validators()), {1})
-        published = (ROOT / "schemas" / "monitor-event-v1.schema.json").read_bytes()
-        packaged = (
-            ROOT / "flowledger" / "schemas" / "monitor-event-v1.schema.json"
-        ).read_bytes()
-        self.assertEqual(packaged, published)
+        for name in ("monitor-event-v1.schema.json", "monitor-summary-v1.schema.json"):
+            with self.subTest(name=name):
+                published = (ROOT / "schemas" / name).read_bytes()
+                packaged = (ROOT / "flowledger" / "schemas" / name).read_bytes()
+                self.assertEqual(packaged, published)
 
     def test_observations_increase_within_a_run_but_reset_across_runs(self):
         events = sequence_events()

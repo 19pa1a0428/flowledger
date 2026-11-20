@@ -116,9 +116,12 @@ will produce a finished feature. Work progresses only when the preceding increme
 35. DONE: Add sequence-level monitor-log checks for strictly increasing observations, legal alert
     status/transition and streak combinations, stopped counters that agree with preceding records,
     explicit boundaries for concatenated runs and rejection of unfinished final runs.
-36. NEXT: Version and publish a strict schema for the inspector's payload-free summary, with retained
+36. DONE: Version and publish a strict schema for the inspector's payload-free summary, with retained
     compatibility examples and contract tests, so local automation can consume the output without
     inferring its shape from implementation details.
+
+All planned acceptance increments are complete. Further roadmap items should be added only for a
+demonstrated product, reliability or portfolio need rather than to manufacture activity.
 
 ## Working cadence
 

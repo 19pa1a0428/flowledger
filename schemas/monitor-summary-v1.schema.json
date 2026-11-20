@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/19pa1a0428/flowledger/schemas/monitor-summary-v1.schema.json",
+  "title": "FlowLedger monitor summary version 1",
+  "description": "Payload-free output contract for the bounded offline monitor-log inspector.",
+  "type": "object",
+  "properties": {
+    "summary_version": { "const": 1 },
+    "event_counts": { "$ref": "#/$defs/event_counts" },
+    "latest_status": { "$ref": "#/$defs/latest_status" },
+    "observation_window": { "$ref": "#/$defs/observation_window" },
+    "records": { "type": "integer", "minimum": 1 },
+    "runs": { "type": "integer", "minimum": 1 },
+    "schema_versions": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "stop_reasons": { "$ref": "#/$defs/stop_reasons" },
+    "transitions": { "$ref": "#/$defs/transitions" }
+  },
+  "required": [
+    "summary_version", "event_counts", "latest_status", "observation_window",
+    "records", "runs", "schema_versions", "stop_reasons", "transitions"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "event_counts": {
+      "type": "object",
+      "properties": {
+        "sample": { "type": "integer", "minimum": 0 },
+        "sample_error": { "type": "integer", "minimum": 0 },
+        "stopped": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["sample", "sample_error", "stopped"],
+      "additionalProperties": false
+    },
+    "latest_status": {
+      "type": "object",
+      "properties": {
+        "oldest_outbox_age": { "enum": ["unknown", "clear", "firing"] },
+        "terminal_queue_growth": { "enum": ["unknown", "clear", "firing"] }
+      },
+      "required": ["oldest_outbox_age", "terminal_queue_growth"],
+      "additionalProperties": false
+    },
+    "nullable_timestamp": {
+      "oneOf": [
+        { "type": "string", "format": "date-time" },
+        { "type": "null" }
+      ]
+    },
+    "observation_window": {
+      "type": "object",
+      "properties": {
+        "first": { "$ref": "#/$defs/nullable_timestamp" },
+        "last": { "$ref": "#/$defs/nullable_timestamp" }
+      },
+      "required": ["first", "last"],
+      "additionalProperties": false
+    },
+    "stop_reasons": {
+      "type": "object",
+      "properties": {
+        "signal": { "type": "integer", "minimum": 0 },
+        "max_samples": { "type": "integer", "minimum": 0 },
+        "consecutive_sample_errors": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["signal", "max_samples", "consecutive_sample_errors"],
+      "additionalProperties": false
+    },
+    "transition_counts": {
+      "type": "object",
+      "properties": {
+        "fired": { "type": "integer", "minimum": 0 },
+        "recovered": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["fired", "recovered"],
+      "additionalProperties": false
+    },
+    "transitions": {
+      "type": "object",
+      "properties": {
+        "oldest_outbox_age": { "$ref": "#/$defs/transition_counts" },
+        "terminal_queue_growth": { "$ref": "#/$defs/transition_counts" }
+      },
+      "required": ["oldest_outbox_age", "terminal_queue_growth"],
+      "additionalProperties": false
+    }
+  }
+}

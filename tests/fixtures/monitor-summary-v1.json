@@ -1,0 +1,24 @@
+{
+  "summary_version": 1,
+  "event_counts": { "sample": 3, "sample_error": 2, "stopped": 3 },
+  "latest_status": {
+    "oldest_outbox_age": "clear",
+    "terminal_queue_growth": "clear"
+  },
+  "observation_window": {
+    "first": "2026-11-16T19:00:00-06:00",
+    "last": "2026-11-16T18:00:00-06:00"
+  },
+  "records": 8,
+  "runs": 3,
+  "schema_versions": [1],
+  "stop_reasons": {
+    "signal": 2,
+    "max_samples": 0,
+    "consecutive_sample_errors": 1
+  },
+  "transitions": {
+    "oldest_outbox_age": { "fired": 1, "recovered": 1 },
+    "terminal_queue_growth": { "fired": 1, "recovered": 1 }
+  }
+}

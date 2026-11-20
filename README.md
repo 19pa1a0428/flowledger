@@ -193,6 +193,13 @@ deterministic summary contains only run and fixed event counts, fired and recove
 latest observed alert statuses, stop reasons and the first/last observation times. It does not read
 services, display error details or identifiers, mutate state, or send notifications.
 
+Every successful summary includes `summary_version: 1` and matches
+[`schemas/monitor-summary-v1.schema.json`](schemas/monitor-summary-v1.schema.json). Consumers should
+select that integer version before reading counters and reject missing, unsupported or expanded
+shapes. A retained compatibility example lives in `tests/fixtures/monitor-summary-v1.json`; changing
+the meaning or shape of this output requires a new summary version rather than silently changing
+version 1.
+
 ### Deployment quality gates
 
 Python, PostgreSQL and Redis image references retain readable version tags but are also pinned to

@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 MAX_INPUT_BYTES = 1_000_000
 MAX_RECORDS = 10_000
+SUMMARY_SCHEMA_VERSION = 1
 SCHEMA_PATHS = {
     1: files("flowledger.schemas").joinpath("monitor-event-v1.schema.json"),
 }
@@ -184,6 +185,7 @@ def inspect_log(
             stop_reasons[record["reason"]] += 1
 
     return {
+        "summary_version": SUMMARY_SCHEMA_VERSION,
         "event_counts": event_counts,
         "latest_status": latest_status,
         "observation_window": {

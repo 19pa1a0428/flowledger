@@ -1,5 +1,49 @@
 # Learning journal
 
+## 2026-11-19 — Versioned monitor-summary contract
+
+Assistance: AI-assisted output-contract design, JSON Schema, compatibility tests and documentation.
+
+The offline inspector now emits `summary_version: 1`. Published
+`schemas/monitor-summary-v1.schema.json` defines the complete payload-free output shape: fixed event,
+status, stop-reason and transition maps; bounded nonnegative count types; observation timestamps or
+null; complete-run and record counts; and the event-schema versions represented. Every object level
+rejects unknown properties, so a consumer can dispatch on the integer version and fail closed before
+interpreting counters.
+
+A retained version-1 summary provides compatibility evidence. Contract tests check the schema itself,
+the frozen example and current inspector output, and reject a missing version, an unknown version and
+an added payload identifier. The public schema has a byte-identical packaged copy so it remains
+available in the installed wheel alongside the event schema.
+
+Validation: after installing the declared pinned extras in the fresh runtime, all 21 focused
+inspector/summary/event/monitor tests passed. Python 3.12 then ran 189 tests: 167 passed and 22 live
+Redis variants were skipped because no disposable local Redis URL was configured. Remaining local
+bytecode compilation, deployment-pin verification, PostgreSQL offline migration generation, all 12
+frontend tests and the TypeScript/Vite production build passed. A non-editable wheel built and
+contained byte-identical packaged event and summary schemas. Docker is unavailable locally, so live
+Compose behavior remains a GitHub Actions check rather than a local claim. GitHub Actions validation
+is pending publication.
+
+Limits: JSON Schema proves the summary's shape and primitive constraints, not arithmetic relationships
+between every aggregate. Semantic trust still comes from the inspector validating and reconciling the
+source sequence before producing output. The schema does not authenticate a summary, retain source
+events or turn this local diagnostic into production monitoring or notification delivery.
+
+Exercise: run the inspector on a complete synthetic log, validate its output against
+`monitor-summary-v1.schema.json`, then add a `workflow_id` field. Confirm strict validation fails and
+explain why a consumer should not simply ignore the extra field.
+
+Interview question: Why version a derived summary separately from the event records it summarizes?
+
+Answer outline: event and summary contracts evolve at different boundaries. New event versions may
+remain representable by the existing aggregate shape, while a renamed counter or changed status
+meaning can break summary consumers without changing source events. Separate explicit discriminators
+let each consumer select a known contract and reject incompatible changes deliberately.
+
+Next: the planned acceptance roadmap is complete. Add work only when a demonstrated need supplies a
+new acceptance criterion.
+
 ## 2026-11-18 — Sequence-checked monitor logs
 
 Assistance: AI-assisted sequence-invariant design, implementation, tests and documentation.
