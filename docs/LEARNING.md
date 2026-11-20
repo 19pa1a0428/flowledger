@@ -23,7 +23,9 @@ bytecode compilation, deployment-pin verification, PostgreSQL offline migration 
 frontend tests and the TypeScript/Vite production build passed. A non-editable wheel built and
 contained byte-identical packaged event and summary schemas. Docker is unavailable locally, so live
 Compose behavior remains a GitHub Actions check rather than a local claim. GitHub Actions validation
-is pending publication.
+run 44655596232 passed all seven jobs: Python 3.11–3.13 with live Redis variants, frontend
+tests/build, PostgreSQL plan gates, the Compose API-to-worker/restore/Collector/versioned-monitor
+checks, and the container scan with SBOM evidence.
 
 Limits: JSON Schema proves the summary's shape and primitive constraints, not arithmetic relationships
 between every aggregate. Semantic trust still comes from the inspector validating and reconciling the
